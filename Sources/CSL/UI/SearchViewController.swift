@@ -405,7 +405,7 @@ final class SearchViewController: NSViewController {
             glow.layer?.shadowRadius = radius
             glow.layer?.shadowOffset = .zero
             glow.layer?.opacity = 0
-            tableView.addSubview(glow, positioned: .below, relativeTo: rowView)
+            tableView.addSubview(glow)
 
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = intensity
