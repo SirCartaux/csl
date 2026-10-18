@@ -59,6 +59,7 @@ window, field editor and focus is more direct in AppKit.
 
 - **Global hotkeys:** `⌘Space` with an `⌥Space` fallback — no Accessibility permission.
 - **Instant:** pre-warmed panel, visible in ~25–35 ms, search field focused immediately.
+- **First-screen result cache:** up to 7 file hits per query are kept in a 30 MB in-memory LRU, so a repeated search paints its first screenful immediately; scrolling beyond that fills the rest from the full index.
 - **Resizable and scalable:** drag the glowing panel edge or any corner. Every row, font, icon, border and the glow scales with it. The panel stays centered and remembers its scale.
 - **Fast sources:** apps, websites and commands are instantaneous; indexed folders answer in milliseconds; Spotlight files stream in (prefix ~30–100 ms, substring ~300 ms).
 - **Quick Look:** press `Space` on a file result after mouse selection, `Tab` or arrows. `Space`/`Esc` closes it; typing jumps back into the query.

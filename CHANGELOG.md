@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Cache the first 7 visible file hits per query in a 30 MB in-memory LRU. Repeated searches show the first screenful immediately; scrolling fills the remaining results after the full index scan.
 - `⌘A` selects the whole search text so it can be replaced or deleted with Backspace.
 - Match localized app names (for example “Festplattendienstprogramm”) while keeping the canonical English app title in results.
 

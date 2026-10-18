@@ -16,10 +16,12 @@ final class SearchEngine {
     private let fileProvider = FileProvider()
     private let websiteProvider = WebsiteProvider()
     private let fileIndex = FileIndex.shared
+    private let fileCache = FileResultCache.shared
 
     private var generation = 0
     private var currentQuery = ""
     private var instantResults: [SearchResult] = []
+    private var cachedFileResults: [SearchResult] = []
     private var fileResults: [SearchResult] = []
     private var fileSearching = false
     private var started: CFTimeInterval = 0
@@ -45,6 +47,7 @@ final class SearchEngine {
 
         currentQuery = trimmed
         fileResults = []
+        cachedFileResults = []
         fileSearching = !trimmed.isEmpty
         started = CACurrentMediaTime()
         loggedFirstUpdate = false
@@ -59,6 +62,9 @@ final class SearchEngine {
         instantResults = appProvider.results(for: trimmed)
             + commandProvider.results(for: trimmed)
             + websiteProvider.results(for: trimmed)
+        let cached = fileCache.results(for: trimmed)
+        cachedFileResults = cached
+        instantResults.append(contentsOf: cached)
         instantResults.sort(by: Self.ranking)
         emit()
         searchIndex(for: trimmed, generation: generation)
@@ -76,6 +82,7 @@ final class SearchEngine {
     func cancel() {
         generation += 1
         fileProvider.cancel()
+        cachedFileResults = []
         fileSearching = false
     }
 
@@ -87,6 +94,11 @@ final class SearchEngine {
             instantResults = appProvider.results(for: currentQuery)
                 + commandProvider.results(for: currentQuery)
                 + websiteProvider.results(for: currentQuery)
+            let known = Set(instantResults.map(\.id))
+            let cached = fileCache.results(for: currentQuery)
+                .filter { !known.contains($0.id) }
+            cachedFileResults = cached
+            instantResults.append(contentsOf: cached)
             instantResults.sort(by: Self.ranking)
         }
         emit()
@@ -97,7 +109,26 @@ final class SearchEngine {
 
     private func searchIndex(for query: String, generation: Int) {
         fileIndex.searchAsync(for: query) { [weak self] results in
-            guard let self, self.generation == generation, !results.isEmpty else { return }
+            guard let self, self.generation == generation else { return }
+
+            // Replace the cached first screenful with the complete index
+            // result. If the index returned nothing the cached rows must go.
+            if !self.cachedFileResults.isEmpty {
+                let cachedIDs = Set(self.cachedFileResults.map(\.id))
+                self.instantResults.removeAll { cachedIDs.contains($0.id) }
+                self.cachedFileResults = []
+                self.emit()
+            }
+
+            Log.debug(String(
+                format: "index results: %d after %.1f ms (query: \"%@\")",
+                results.count,
+                (CACurrentMediaTime() - self.started) * 1000,
+                query
+            ))
+            guard !results.isEmpty else { return }
+            FileResultCache.shared.store(results, for: query)
+
             let known = Set(self.instantResults.map(\.id))
             let fresh = results.filter { !known.contains($0.id) }
             guard !fresh.isEmpty else { return }
