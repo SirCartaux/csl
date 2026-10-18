@@ -385,9 +385,16 @@ final class SearchViewController: NSViewController {
         cancelRowReveals()
         tableView.layoutSubtreeIfNeeded()
 
+        let visible = tableView.rows(in: tableView.visibleRect)
+        guard visible.location != NSNotFound else { return }
+        let visibleIndices = indices.filter {
+            $0 >= visible.location && $0 < NSMaxRange(visible)
+        }
+        guard !visibleIndices.isEmpty else { return }
+
         var newReveals: [(grid: PixelRevealGrid, layer: CALayer)] = []
         var maxTotal: TimeInterval = 0
-        for index in indices {
+        for index in visibleIndices {
             guard let rowView = tableView.rowView(atRow: index, makeIfNecessary: true) else { continue }
             rowView.wantsLayer = true
             guard let layer = rowView.layer,
