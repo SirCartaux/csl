@@ -152,8 +152,10 @@ final class SearchEngine {
                 query
             ))
             self.streamedFileResults = results
-            // Only the finished search is allowed to populate the cache.
-            FileResultCache.shared.store(results, for: query)
+            // Only the finished search is allowed to populate the cache, and
+            // it stores the first 7 files in their final ranked order.
+            let rankedFiles = ResultRanker.shared.ranked(results, query: query)
+            FileResultCache.shared.store(rankedFiles, for: query)
             self.emit()
         }
     }
