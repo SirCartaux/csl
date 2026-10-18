@@ -611,6 +611,16 @@ final class SearchViewController: NSViewController {
         quickLookMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
 
+            // The launcher has no main Edit menu, so handle ⌘A explicitly for
+            // the search field's field editor.
+            if self.view.window?.isKeyWindow == true,
+               self.searchField.currentEditor() != nil,
+               event.modifierFlags.contains(.command),
+               event.keyCode == 0 {
+                self.searchField.currentEditor()?.selectAll(nil)
+                return nil
+            }
+
             if previewIsOpen, QLPreviewPanel.sharedPreviewPanelExists() {
                 if event.isARepeat { return nil }
                 switch event.keyCode {
@@ -869,6 +879,9 @@ extension SearchViewController: NSTextFieldDelegate {
             return true
         case #selector(NSResponder.cancelOperation(_:)):
             onClose?()
+            return true
+        case #selector(NSResponder.selectAll(_:)):
+            textView.selectAll(nil)
             return true
         case #selector(NSResponder.insertTab(_:)):
             if isNavigatingResults {

@@ -137,6 +137,7 @@ when clicked.
 | `Enter` | Open the selection (always, including after mouse selection) |
 | `⌘Enter` | Reveal in Finder |
 | `Space` | Quick Look for a file result (after mouse selection, `Tab` or arrows); press again to close; otherwise a space in the query |
+| `⌘A` | Select the whole search text |
 | `Esc` | Close Quick Look, or close the panel |
 | Click a result | Select only (does not open) |
 | Double-click a result | Open |
