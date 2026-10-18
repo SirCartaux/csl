@@ -3,7 +3,7 @@ import AppKit
 // MARK: - Pixel slider
 
 final class PixelSlider: NSView {
-    var minValue: Double = 0.5
+    var minValue: Double = 0.25
     var maxValue: Double = 2.0
 
     var value: Double = 1.0 {
@@ -145,7 +145,7 @@ final class AnimationSection: SettingsSection {
             color: Theme.textFaint
         )
         drawText(
-            "DER STANDARD ENTSPRICHT DEM BISHERIGEN 0,5X-TIMING.",
+            "DER STANDARD ENTSPRICHT DEM BISHERIGEN TIMING.",
             x: 0,
             y: 232,
             width: bounds.width,
