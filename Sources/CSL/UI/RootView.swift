@@ -87,6 +87,9 @@ final class RootView: NSView {
     var query: String = ""
     var resultCount: Int = 0
     var isSearching: Bool = false
+    var calculatorActive = false {
+        didSet { needsDisplay = true }
+    }
     var indexProgress: (scanned: Int, total: Int)? {
         didSet { needsDisplay = true }
     }
@@ -210,6 +213,16 @@ final class RootView: NSView {
                 font: Theme.launcherDisplay(8),
                 color: Theme.textFaint,
                 in: rect.offsetBy(dx: 0, dy: Theme.ls(14))
+            )
+            return
+        }
+
+        if calculatorActive {
+            drawCentered(
+                "CALCULATION",
+                font: Theme.launcherDisplay(9),
+                color: Theme.textFaint,
+                in: rect
             )
             return
         }

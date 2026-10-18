@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Launcher
+- Inline calculator: arithmetic, parentheses, powers, percentages, factorial, scientific notation, constants and functions (`sqrt`, `sin`, `log`, `pow`, `min`/`max`, …) produce a coloured pixel `= result` badge directly after the query.
+
 ## 0.4.2 — 2026-10-19
 
 ### Search

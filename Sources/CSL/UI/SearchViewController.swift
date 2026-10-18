@@ -17,6 +17,7 @@ final class SearchViewController: NSViewController {
     private let resizeHandle = ResizeHandleView()
     private let placeholderView = SearchPlaceholderView()
     private let searchActivity = PixelActivityView()
+    private let calculatorHint = CalculatorHintView(frame: .zero)
     private let rootReveal = PixelRevealGrid()
     private var pixelOpenWork: DispatchWorkItem?
     private var pixelCloseWork: DispatchWorkItem?
@@ -108,6 +109,13 @@ final class SearchViewController: NSViewController {
         }
         rootView.addSubview(resizeHandle, positioned: .above, relativeTo: glowView)
         rootView.addSubview(searchActivity)
+        calculatorHint.wantsLayer = true
+        calculatorHint.layer?.shadowColor = Theme.accent.cgColor
+        calculatorHint.layer?.shadowOpacity = 0.35
+        calculatorHint.layer?.shadowRadius = Theme.ls(4)
+        calculatorHint.layer?.shadowOffset = .zero
+        calculatorHint.isHidden = true
+        rootView.addSubview(calculatorHint)
 
         engine?.onIndexProgress = { [weak self] scanned, total, done in
             guard let self else { return }
@@ -158,6 +166,7 @@ final class SearchViewController: NSViewController {
         )
         placeholderView.frame = searchField.frame
         searchActivity.frame = Layout.footerActivityRect(in: bounds)
+        updateCalculatorHint()
 
         if let column = tableView.tableColumns.first {
             column.width = listRect.width
@@ -287,6 +296,8 @@ final class SearchViewController: NSViewController {
         userScrolledResults = false
         indexWasScanning = false
         pendingResultFlash = false
+        calculatorHint.isHidden = true
+        rootView.calculatorActive = false
         results = []
         selectedIndex = 0
         rootView.query = ""
@@ -908,6 +919,49 @@ final class SearchViewController: NSViewController {
 // MARK: - NSTextFieldDelegate
 
 extension SearchViewController: NSTextFieldDelegate {
+    private func updateCalculatorHint() {
+        guard let calculation = Calculator.evaluate(searchField.stringValue),
+              !searchField.stringValue.isEmpty else {
+            calculatorHint.isHidden = true
+            if rootView.calculatorActive {
+                rootView.calculatorActive = false
+                rootView.needsDisplay = true
+            }
+            return
+        }
+
+        let field = searchField.frame
+        guard field.width > 1 else { return }
+        let font = searchField.font ?? Theme.launcherDisplay(20)
+        let textWidth = (searchField.stringValue as NSString)
+            .size(withAttributes: [.font: font]).width
+        let badge = calculatorHint.badgeSize(for: calculation.display)
+        let x = field.minX + Theme.ls(2) + textWidth + Theme.ls(8)
+        let maxX = field.maxX - Theme.ls(4)
+
+        guard x + badge.width <= maxX else {
+            calculatorHint.isHidden = true
+            if rootView.calculatorActive {
+                rootView.calculatorActive = false
+                rootView.needsDisplay = true
+            }
+            return
+        }
+
+        calculatorHint.resultText = calculation.display
+        calculatorHint.frame = CGRect(
+            x: floor(x),
+            y: floor(field.midY - badge.height / 2),
+            width: badge.width,
+            height: badge.height
+        )
+        calculatorHint.isHidden = false
+        if !rootView.calculatorActive {
+            rootView.calculatorActive = true
+            rootView.needsDisplay = true
+        }
+    }
+
     func controlTextDidChange(_ obj: Notification) {
         guard obj.object as? NSTextField === searchField else { return }
         Log.debug("query: \"\(searchField.stringValue)\"")
@@ -919,6 +973,7 @@ extension SearchViewController: NSTextFieldDelegate {
         userScrolledResults = false
         selectedIndex = 0
         rootView.query = searchField.stringValue
+        updateCalculatorHint()
         engine?.search(searchField.stringValue)
         rootView.needsDisplay = true
     }
