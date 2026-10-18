@@ -81,6 +81,7 @@ final class PixelSlider: NSView {
 final class AnimationSection: SettingsSection {
     private let slider = PixelSlider()
     private let resetButton = ClosureButton("STANDARD 1,00X", style: .ghost) {}
+    private let blurButton = ClosureButton("AN", style: .primary) {}
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -99,6 +100,12 @@ final class AnimationSection: SettingsSection {
             self?.reload()
         }
         addSubview(resetButton)
+
+        blurButton.setAction { [weak self] in
+            SettingsStore.shared.setResultBlurEnabled(!SettingsStore.shared.resultBlurEnabled)
+            self?.reload()
+        }
+        addSubview(blurButton)
     }
 
     required init?(coder: NSCoder) {
@@ -109,6 +116,7 @@ final class AnimationSection: SettingsSection {
         super.layout()
         slider.frame = CGRect(x: 0, y: 104, width: min(380, bounds.width), height: 30)
         resetButton.frame = CGRect(x: 0, y: 276, width: 180, height: 28)
+        blurButton.frame = CGRect(x: 0, y: 340, width: 70, height: 28)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -154,10 +162,23 @@ final class AnimationSection: SettingsSection {
         )
 
         drawText("1,00X IST DER STANDARD.", x: 194, y: 284, width: bounds.width - 194, font: 8, color: Theme.textFaint)
+
+        drawText("ERGEBNIS-BLUR", x: 0, y: 312, width: 220, font: 8.5, color: Theme.textDim)
+        drawText(
+            "GAUSSIAN BLUR BEI NEUEN ERGEBNISZEILEN.",
+            x: 84,
+            y: 346,
+            width: bounds.width - 84,
+            font: 8,
+            color: Theme.textFaint
+        )
     }
 
     override func reload() {
         slider.value = SettingsStore.shared.pixelAnimationSpeed
+        blurButton.title = SettingsStore.shared.resultBlurEnabled ? "AN" : "AUS"
+        blurButton.style = SettingsStore.shared.resultBlurEnabled ? .primary : .ghost
+        blurButton.needsDisplay = true
         needsDisplay = true
     }
 

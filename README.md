@@ -210,7 +210,8 @@ run; default exclusions below.
 A speed slider from **0,25× (slow)** to **2,0× (fast)**, default **1,00×**.
 It changes the open/close pixel wave and the smooth new-row slide without
 touching search performance. The launcher pixels still jump hard from 0 to 100 %;
-result rows get the Gaussian-blur slide instead of a pixel reveal.
+result rows get the Gaussian-blur slide instead of a pixel reveal. **ERGEBNIS-BLUR**
+switches the blur off; the row then slides and fades in sharply.
 
 ### General
 

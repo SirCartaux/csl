@@ -22,7 +22,7 @@ final class SearchViewController: NSViewController {
     private var pixelCloseWork: DispatchWorkItem?
     private var pixelRevealActive = false
     private var pixelClosing = false
-    private var resultReveals: [(overlay: NSView, row: CALayer)] = []
+    private var resultReveals: [(overlay: NSView?, row: CALayer, background: CGColor?)] = []
     private var resultRevealWork: DispatchWorkItem?
 
     private var results: [SearchResult] = []
@@ -377,7 +377,8 @@ final class SearchViewController: NSViewController {
     }
 
     /// New rows slide in from the left with a Gaussian-blurred snapshot that
-    /// resolves into the sharp row. Only visible new rows are animated.
+    /// resolves into the sharp row. The cover sits behind the row, so it can
+    /// never draw on top of the final text. Only visible new rows animate.
     private func animateNewRows(_ indices: [Int]) {
         guard animationsEnabled,
               view.window?.isVisible == true,
@@ -397,13 +398,15 @@ final class SearchViewController: NSViewController {
 
         tableView.wantsLayer = true
         let scale = smoothTimeScale
-        let slide = 0.22 * scale
-        let fade = 0.10 * scale
-        let total = slide + fade
-        let slideFraction = slide / total
-        let offset = 22 * Theme.launcherScale
+        // Fast launch, long flat settle: 40 % of the time brings the row in,
+        // the remaining 60 % is a slow blur-to-sharp tail.
+        let total = 0.40 * scale
+        let slideFraction = 0.40
+        let offset = 24 * Theme.launcherScale
+        let fastOut = CAMediaTimingFunction(controlPoints: 0.02, 0.95, 0.10, 1.0)
+        let blur = SettingsStore.shared.resultBlurEnabled
 
-        var reveals: [(overlay: NSView, row: CALayer)] = []
+        var reveals: [(overlay: NSView?, row: CALayer, background: CGColor?)] = []
         for index in visibleIndices {
             guard let rowView = tableView.rowView(atRow: index, makeIfNecessary: true) else { continue }
             rowView.layoutSubtreeIfNeeded()
@@ -412,52 +415,92 @@ final class SearchViewController: NSViewController {
                   rowView.bounds.width > 1,
                   rowView.bounds.height > 1 else { continue }
 
-            guard let rep = rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds) else { continue }
-            rowView.cacheDisplay(in: rowView.bounds, to: rep)
-            guard let cgImage = rep.cgImage,
-                  let blurred = blurredImage(cgImage, radius: 6 * Theme.launcherScale) else { continue }
-            let image = NSImage(cgImage: blurred, size: rowView.bounds.size)
+            let originalBackground = rowLayer.backgroundColor
 
-            let overlay = ResultBlurOverlayView(image: image)
-            overlay.frame = rowView.frame
-            overlay.wantsLayer = true
-            overlay.layer?.opacity = 0
-            overlay.layer?.transform = CATransform3DMakeTranslation(-offset, 0, 0)
-            tableView.addSubview(overlay)
+            if blur {
+                guard let rep = rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds) else { continue }
+                rowView.cacheDisplay(in: rowView.bounds, to: rep)
+                guard let cgImage = rep.cgImage,
+                      let blurred = blurredImage(cgImage, radius: 6 * Theme.launcherScale) else { continue }
+                let image = NSImage(cgImage: blurred, size: rowView.bounds.size)
 
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            rowLayer.opacity = 1
-            CATransaction.commit()
-            rowLayer.removeAnimation(forKey: "resultRowFade")
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                rowLayer.opacity = 0
+                CATransaction.commit()
 
-            let slideAnimation = CABasicAnimation(keyPath: "transform.translation.x")
-            slideAnimation.fromValue = -offset
-            slideAnimation.toValue = 0
-            slideAnimation.duration = total
-            slideAnimation.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            slideAnimation.fillMode = .both
-            slideAnimation.isRemovedOnCompletion = true
-            overlay.layer?.add(slideAnimation, forKey: "resultSlide")
+                let overlay = ResultBlurOverlayView(image: image)
+                overlay.frame = rowView.frame
+                overlay.wantsLayer = true
+                overlay.layer?.opacity = 0
+                overlay.layer?.transform = CATransform3DMakeTranslation(-offset, 0, 0)
+                tableView.addSubview(overlay, positioned: .below, relativeTo: rowView)
 
-            let overlayFade = CAKeyframeAnimation(keyPath: "opacity")
-            overlayFade.values = [0.0, 1.0, 1.0, 0.0]
-            overlayFade.keyTimes = [0.0, slideFraction, slideFraction, 1.0].map { NSNumber(value: $0) }
-            overlayFade.duration = total
-            overlayFade.fillMode = .both
-            overlayFade.isRemovedOnCompletion = true
-            overlay.layer?.opacity = 0
-            overlay.layer?.add(overlayFade, forKey: "resultOverlayFade")
+                // Opaque row background, so the sharp row covers the blurred
+                // layer instead of letting it float on top.
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                rowLayer.backgroundColor = Theme.bg.cgColor
+                CATransaction.commit()
 
-            let rowFade = CAKeyframeAnimation(keyPath: "opacity")
-            rowFade.values = [0.0, 0.0, 1.0]
-            rowFade.keyTimes = [0.0, slideFraction, 1.0].map { NSNumber(value: $0) }
-            rowFade.duration = total
-            rowFade.fillMode = .both
-            rowFade.isRemovedOnCompletion = true
-            rowLayer.add(rowFade, forKey: "resultRowFade")
+                let slideAnimation = CABasicAnimation(keyPath: "transform.translation.x")
+                slideAnimation.fromValue = -offset
+                slideAnimation.toValue = 0
+                slideAnimation.duration = total * slideFraction
+                slideAnimation.timingFunction = fastOut
+                slideAnimation.fillMode = .both
+                slideAnimation.isRemovedOnCompletion = true
+                overlay.layer?.add(slideAnimation, forKey: "resultSlide")
 
-            reveals.append((overlay, rowLayer))
+                let overlayFade = CAKeyframeAnimation(keyPath: "opacity")
+                overlayFade.values = [0.0, 1.0, 1.0, 0.0]
+                overlayFade.keyTimes = [0.0, 0.10, slideFraction, 1.0].map { NSNumber(value: $0) }
+                overlayFade.timingFunctions = [
+                    fastOut,
+                    CAMediaTimingFunction(name: .linear),
+                    CAMediaTimingFunction(name: .linear)
+                ]
+                overlayFade.duration = total
+                overlayFade.fillMode = .both
+                overlayFade.isRemovedOnCompletion = true
+                overlay.layer?.add(overlayFade, forKey: "resultOverlayFade")
+
+                let rowFade = CAKeyframeAnimation(keyPath: "opacity")
+                rowFade.values = [0.0, 0.0, 1.0]
+                rowFade.keyTimes = [0.0, slideFraction, 1.0].map { NSNumber(value: $0) }
+                rowFade.timingFunctions = [CAMediaTimingFunction(name: .linear), fastOut]
+                rowFade.duration = total
+                rowFade.fillMode = .both
+                rowFade.isRemovedOnCompletion = false
+                rowLayer.add(rowFade, forKey: "resultRowFade")
+
+                reveals.append((overlay, rowLayer, originalBackground))
+            } else {
+                // Blur disabled: just slide and fade the real row.
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                rowLayer.opacity = 0
+                rowLayer.transform = CATransform3DMakeTranslation(-offset, 0, 0)
+                CATransaction.commit()
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = 0
+                fade.toValue = 1
+                fade.duration = total
+                fade.timingFunction = fastOut
+                fade.fillMode = .both
+                fade.isRemovedOnCompletion = false
+                rowLayer.add(fade, forKey: "resultRowFade")
+
+                let slide = CABasicAnimation(keyPath: "transform.translation.x")
+                slide.fromValue = -offset
+                slide.toValue = 0
+                slide.duration = total
+                slide.timingFunction = fastOut
+                slide.fillMode = .both
+                slide.isRemovedOnCompletion = false
+                rowLayer.add(slide, forKey: "resultSlide")
+                reveals.append((nil, rowLayer, originalBackground))
+            }
         }
 
         guard !reveals.isEmpty else { return }
@@ -475,10 +518,13 @@ final class SearchViewController: NSViewController {
         resultRevealWork = nil
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for (overlay, row) in resultReveals {
-            overlay.removeFromSuperview()
+        for (overlay, row, background) in resultReveals {
+            overlay?.removeFromSuperview()
             row.opacity = 1
+            row.transform = CATransform3DIdentity
+            row.backgroundColor = background
             row.removeAnimation(forKey: "resultRowFade")
+            row.removeAnimation(forKey: "resultSlide")
         }
         CATransaction.commit()
         resultReveals.removeAll()

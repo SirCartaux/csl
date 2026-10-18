@@ -28,6 +28,7 @@ struct CSLSettings: Codable {
     var launcherScale: Double? = nil
     var pixelAnimationSpeed: Double? = nil
     var pixelAnimationSpeedV2: Double? = nil
+    var resultBlurEnabled: Bool? = nil
 }
 
 /// Single source of truth for user preferences. Persisted as JSON in
@@ -99,6 +100,16 @@ final class SettingsStore {
         let clamped = min(max(value, Self.minPixelAnimationSpeed), Self.maxPixelAnimationSpeed)
         guard abs(pixelAnimationSpeed - clamped) > 0.0001 else { return }
         settings.pixelAnimationSpeedV2 = clamped
+        save(notify: false)
+    }
+
+    var resultBlurEnabled: Bool {
+        settings.resultBlurEnabled ?? true
+    }
+
+    func setResultBlurEnabled(_ enabled: Bool) {
+        guard resultBlurEnabled != enabled else { return }
+        settings.resultBlurEnabled = enabled
         save(notify: false)
     }
 
