@@ -15,6 +15,15 @@ final class SearchViewController: NSViewController {
     private let tableView = ResultTableView()
     private let glowView = GlowView(frame: .zero)
     private let resizeHandle = ResizeHandleView()
+    private let placeholderView = SearchPlaceholderView()
+    private let rootReveal = PixelRevealGrid()
+    private let resultsReveal = PixelRevealGrid()
+    private var pixelOpenWork: DispatchWorkItem?
+    private var pixelCloseWork: DispatchWorkItem?
+    private var pixelResultsWork: DispatchWorkItem?
+    private var pixelRevealActive = false
+    private var pixelClosing = false
+    private var lastResultsSignature = ""
 
     private var results: [SearchResult] = []
     private var selectedIndex = 0
@@ -31,6 +40,34 @@ final class SearchViewController: NSViewController {
     private var draggedResult: SearchResult?
 
     var isPreviewing: Bool { previewIsOpen }
+
+    var animationsEnabled: Bool {
+        ProcessInfo.processInfo.environment["CSL_NO_PIXEL_ANIMATION"] != "1"
+    }
+
+    private var pixelCellSize: CGFloat {
+        max(6, 10 * Theme.launcherScale)
+    }
+
+    private var fieldCenter: CGPoint {
+        CGPoint(x: searchField.frame.midX, y: searchField.frame.midY)
+    }
+
+    /// The mask container's geometry is flipped relative to the root layer
+    /// (the root layer is itself flipped), so mirror Y for the radial wave.
+    private var radialMaskCenter: CGPoint {
+        CGPoint(
+            x: fieldCenter.x,
+            y: max(0, rootView.bounds.height - fieldCenter.y)
+        )
+    }
+
+    private var listMaskSize: CGSize {
+        CGSize(
+            width: max(1, scrollView.bounds.width),
+            height: max(1, CGFloat(Theme.maxRows) * Theme.rowHeight)
+        )
+    }
 
     func dismissQuickLook() {
         guard previewIsOpen else { return }
@@ -56,6 +93,7 @@ final class SearchViewController: NSViewController {
         }
         rootView.addSubview(scrollView)
         rootView.addSubview(searchField)
+        rootView.addSubview(placeholderView)
         rootView.addSubview(glowView)
 
         resizeHandle.frame = rootView.bounds
@@ -70,6 +108,12 @@ final class SearchViewController: NSViewController {
         rootView.addSubview(resizeHandle, positioned: .above, relativeTo: glowView)
 
         searchField.applyLauncherScale()
+        rootView.wantsLayer = true
+        scrollView.wantsLayer = true
+        if let cell = searchField.cell as? NSTextFieldCell {
+            cell.placeholderAttributedString = nil
+        }
+        placeholderView.isHidden = !searchField.stringValue.isEmpty
         glowView.scale = Theme.launcherScale
         installQuickLookMonitor()
     }
@@ -91,6 +135,7 @@ final class SearchViewController: NSViewController {
             width: max(80, panel.width - Theme.ls(44) - Theme.ls(18)),
             height: Theme.ls(30)
         )
+        placeholderView.frame = searchField.frame
 
         if let column = tableView.tableColumns.first {
             column.width = listRect.width
@@ -105,8 +150,10 @@ final class SearchViewController: NSViewController {
         let clamped = min(max(scale, Theme.minLauncherScale), Theme.maxLauncherScale)
         guard abs(clamped - Theme.launcherScale) > 0.0001 else { return }
 
+        cancelPixelAnimations()
         Theme.launcherScale = clamped
         searchField.applyLauncherScale()
+        placeholderView.needsDisplay = true
         glowView.scale = clamped
         tableView.rowHeight = Theme.rowHeight
         view.needsLayout = true
@@ -197,12 +244,15 @@ final class SearchViewController: NSViewController {
     // MARK: - Presentation
 
     func prepareForPresentation() {
+        cancelPixelAnimations()
+        lastResultsSignature = ""
         clearStatus()
         isNavigatingResults = false
         if previewIsOpen {
             closeQuickLook(restoreFocus: false)
         }
         searchField.stringValue = ""
+        placeholderView.isHidden = false
         resetSelectionOnNextUpdate = true
         userNavigated = false
         results = []
@@ -217,6 +267,155 @@ final class SearchViewController: NSViewController {
 
     func startGlow() {
         glowView.startPulse()
+    }
+
+    // MARK: - Pixel reveal
+
+    /// Build the masks during panel pre-warm so the hotkey path never creates
+    /// layers while the user is waiting.
+    func prewarmPixelAnimations() {
+        guard animationsEnabled else { return }
+        rootView.wantsLayer = true
+        scrollView.wantsLayer = true
+        guard rootView.bounds.width > 1, rootView.bounds.height > 1 else { return }
+        rootReveal.prewarm(
+            size: rootView.bounds.size,
+            cellSize: pixelCellSize,
+            style: .radial(center: radialMaskCenter)
+        )
+        resultsReveal.prewarm(
+            size: listMaskSize,
+            cellSize: pixelCellSize,
+            style: .random
+        )
+    }
+
+    /// Hide the content behind a pixel mask before the panel is ordered front.
+    func preparePixelOpen() {
+        guard animationsEnabled else { return }
+        cancelPixelAnimations()
+        rootView.wantsLayer = true
+        let size = rootView.bounds.size
+        guard size.width > 1, size.height > 1, let layer = rootView.layer else { return }
+        rootReveal.prepare(
+            on: layer,
+            size: size,
+            cellSize: pixelCellSize,
+            style: .radial(center: radialMaskCenter),
+            visible: false
+        )
+        pixelRevealActive = true
+    }
+
+    /// Start the pixel wave only after the panel is key and the field focused.
+    func startPixelOpen() {
+        guard animationsEnabled, pixelRevealActive, let layer = rootView.layer else { return }
+        let total = rootReveal.animateOpen(
+            on: layer,
+            spread: 0.12,
+            jitter: 0.05,
+            duration: 0.001
+        )
+        pixelOpenWork?.cancel()
+        let work = DispatchWorkItem { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            self.rootReveal.clear(from: layer)
+            self.pixelRevealActive = false
+        }
+        pixelOpenWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + total, execute: work)
+    }
+
+    /// Shrink the panel from the outside in, then hand control back to the
+    /// window controller.
+    func animatePixelClose(completion: @escaping () -> Void) {
+        guard animationsEnabled, view.window?.isVisible == true else {
+            completion()
+            return
+        }
+        cancelPixelAnimations()
+        pixelClosing = true
+        rootView.wantsLayer = true
+        let size = rootView.bounds.size
+        guard size.width > 1, size.height > 1, let layer = rootView.layer else {
+            pixelClosing = false
+            completion()
+            return
+        }
+        rootReveal.prepare(
+            on: layer,
+            size: size,
+            cellSize: pixelCellSize,
+            style: .radial(center: radialMaskCenter),
+            visible: true
+        )
+        let total = rootReveal.animateClose(
+            on: layer,
+            spread: 0.12,
+            jitter: 0.05,
+            duration: 0.001
+        )
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pixelClosing = false
+            self.pixelRevealActive = false
+            completion()
+        }
+        pixelCloseWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + total, execute: work)
+    }
+
+    func cancelPixelAnimations() {
+        pixelOpenWork?.cancel()
+        pixelOpenWork = nil
+        pixelCloseWork?.cancel()
+        pixelCloseWork = nil
+        pixelResultsWork?.cancel()
+        pixelResultsWork = nil
+        if let layer = rootView.layer {
+            rootReveal.clear(from: layer)
+        }
+        if let layer = scrollView.layer {
+            resultsReveal.clear(from: layer)
+        }
+        pixelRevealActive = false
+        pixelClosing = false
+    }
+
+    /// A very short left-to-right pixel wave whenever the result set changes.
+    private func animateResultsIfNeeded() {
+        guard animationsEnabled,
+              view.window?.isVisible == true,
+              !pixelRevealActive,
+              !pixelClosing else { return }
+
+        let signature = results.map(\.id).joined(separator: "\u{1F}")
+        guard signature != lastResultsSignature else { return }
+        lastResultsSignature = signature
+
+        scrollView.wantsLayer = true
+        guard let layer = scrollView.layer else { return }
+        pixelResultsWork?.cancel()
+        resultsReveal.clear(from: layer)
+        resultsReveal.prepare(
+            on: layer,
+            size: listMaskSize,
+            cellSize: pixelCellSize,
+            style: .random,
+            visible: false
+        )
+        let total = resultsReveal.animateOpen(
+            on: layer,
+            spread: 0.08,
+            jitter: 0,
+            duration: 0.001
+        )
+        let work = DispatchWorkItem { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            self.resultsReveal.clear(from: layer)
+        }
+        pixelResultsWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + total, execute: work)
     }
 
     func stopGlow() {
@@ -234,6 +433,7 @@ final class SearchViewController: NSViewController {
 
     func setSearchText(_ text: String) {
         searchField.stringValue = text
+        placeholderView.isHidden = !text.isEmpty
         controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: searchField))
         if let editor = searchField.currentEditor() as? NSTextView {
             editor.selectedRange = NSRange(location: (text as NSString).length, length: 0)
@@ -257,6 +457,11 @@ final class SearchViewController: NSViewController {
         let width = Theme.panelWidth + 2 * Theme.panelInset
         guard abs(window.frame.height - height) > 0.5 || abs(window.frame.width - width) > 0.5 else {
             return
+        }
+        if pixelRevealActive, !pixelClosing {
+            // The list grew while the open wave was still running. Drop the
+            // old mask rather than reveal the new area unmasked.
+            cancelPixelAnimations()
         }
 
         var frame = window.frame
@@ -306,6 +511,7 @@ final class SearchViewController: NSViewController {
         rootView.isSearching = isSearching
         rootView.needsDisplay = true
         refreshWindowSize()
+        animateResultsIfNeeded()
     }
 
     // MARK: - Selection
@@ -614,6 +820,7 @@ extension SearchViewController: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard obj.object as? NSTextField === searchField else { return }
         Log.debug("query: \"\(searchField.stringValue)\"")
+        placeholderView.isHidden = !searchField.stringValue.isEmpty
         clearStatus()
         isNavigatingResults = false
         resetSelectionOnNextUpdate = true

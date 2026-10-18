@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var scaleArgument: CGFloat?
     private var selftestStarted: CFTimeInterval = 0
     private var didLogSelftestFirstUpdate = false
+    private var isClosing = false
 
     // MARK: - Lifecycle
 
@@ -211,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard panel != nil, !panel.isVisible else { return }
         viewController.prepareForPresentation()
         position(panel)
+        viewController.prewarmPixelAnimations()
         panel.alphaValue = 0.01
         panel.orderFrontRegardless()
         panel.orderOut(nil)
@@ -221,6 +223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Show / hide
 
     private func togglePanel() {
+        if isClosing {
+            showPanel()
+            return
+        }
         if panel.isVisible {
             hidePanel(restoreFocus: true)
         } else {
@@ -231,6 +237,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func showPanel() {
         if SettingsWindowController.shared.isVisible {
             SettingsWindowController.shared.close(restoreFocus: false)
+        }
+        if isClosing {
+            // Re-open while the close wave is still running: keep the panel
+            // where it is, drop the mask and restore focus immediately.
+            viewController.cancelPixelAnimations()
+            isClosing = false
         }
         guard !panel.isVisible else {
             panel.makeKey()
@@ -246,20 +258,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         viewController.prepareForPresentation()
         position(panel, on: screen)
+        // Hide the content behind the pixel mask before the panel appears.
+        viewController.preparePixelOpen()
         // Deliberately no NSApp.activate(): the non-activating panel becomes
         // key while the previous app stays frontmost, Spotlight-style.
         panel.makeKeyAndOrderFront(nil)
         viewController.focus()
+        viewController.startPixelOpen()
         viewController.startGlow()
         Log.debug(String(format: "panel shown in %.1f ms", (CACurrentMediaTime() - started) * 1000))
     }
 
     func hidePanel(restoreFocus: Bool) {
-        guard panel.isVisible else { return }
+        guard panel.isVisible, !isClosing else { return }
+        isClosing = true
         viewController.dismissQuickLook()
-        panel.orderOut(nil)
         viewController.stopGlow()
         engine.cancel()
+        viewController.animatePixelClose { [weak self] in
+            self?.finishHide(restoreFocus: restoreFocus)
+        }
+    }
+
+    private func finishHide(restoreFocus: Bool) {
+        guard isClosing else { return }
+        panel.orderOut(nil)
+        viewController.cancelPixelAnimations()
+        isClosing = false
         Log.debug("panel hidden (restoreFocus: \(restoreFocus))")
         if restoreFocus {
             panel.resignKey()
@@ -348,7 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Window delegate
 
     func windowDidResignKey(_ notification: Notification) {
-        guard notification.object as? NSWindow === panel, panel.isVisible else { return }
+        guard notification.object as? NSWindow === panel, panel.isVisible, !isClosing else { return }
         // A drag out of the panel temporarily takes key away; hide only after
         // the drag session has ended.
         if viewController.isDraggingResult || viewController.isPreviewing { return }
@@ -529,7 +554,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let queryArgument, !queryArgument.isEmpty {
             viewController.setSearchText(queryArgument)
         }
-
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             self?.writeSnapshot(to: path)
             NSApp.terminate(nil)

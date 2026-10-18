@@ -48,15 +48,6 @@ final class PixelTextField: NSTextField {
     /// their fixed font.
     func applyLauncherScale() {
         font = Theme.launcherDisplay(20)
-        if let cell = cell as? NSTextFieldCell {
-            cell.placeholderAttributedString = NSAttributedString(
-                string: "TYPE TO SEARCH",
-                attributes: [
-                    .font: Theme.launcherDisplay(15),
-                    .foregroundColor: Theme.textFaint
-                ]
-            )
-        }
         if let editor = currentEditor() as? NSTextView {
             editor.font = font
             var attributes = editor.typingAttributes

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Center the empty-query “TYPE TO SEARCH” placeholder vertically.
+- Pixel reveal: fixed-size pixels pop in without a cross-fade. The launcher opens outward from the search bar, results appear in a truly random pixel order, and closing removes pixels from the outside in.
+- Pixel animation is GPU-composited, pre-warmed, and does not touch the search path.
+
 ## 0.3.0 — 2026-10-18
 
 ### Launcher
