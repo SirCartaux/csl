@@ -25,6 +25,7 @@ struct CSLSettings: Codable {
     var ignoredFolders: [String] = []
     var ignoredExtensions: [String] = []
     var websites: [WebsiteEntry] = []
+    var launcherScale: Double? = nil
 }
 
 /// Single source of truth for user preferences. Persisted as JSON in
@@ -55,7 +56,7 @@ final class SettingsStore {
         }
     }
 
-    func save() {
+    func save(notify: Bool = true) {
         rebuildCaches()
         do {
             let encoder = JSONEncoder()
@@ -65,7 +66,18 @@ final class SettingsStore {
         } catch {
             Log.debug("settings save failed: \(error)")
         }
-        NotificationCenter.default.post(name: .cslSettingsChanged, object: nil)
+        if notify {
+            NotificationCenter.default.post(name: .cslSettingsChanged, object: nil)
+        }
+    }
+
+    /// Persist the launcher scale without triggering a search refresh while the
+    /// user is dragging a window edge.
+    func setLauncherScale(_ value: Double) {
+        let clamped = min(max(value, 0.7), 2.2)
+        guard settings.launcherScale != clamped else { return }
+        settings.launcherScale = clamped
+        save(notify: false)
     }
 
     private func rebuildCaches() {

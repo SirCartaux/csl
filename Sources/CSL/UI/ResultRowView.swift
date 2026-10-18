@@ -25,9 +25,9 @@ final class ResultRowView: NSView {
 
         if isSelected {
             PixelDraw.fill(bounds, Theme.bgSelected)
-            PixelDraw.fill(CGRect(x: 0, y: 0, width: 3, height: bounds.height), Theme.accent)
+            PixelDraw.fill(CGRect(x: 0, y: 0, width: Theme.ls(3), height: bounds.height), Theme.accent)
         } else {
-            PixelDraw.hLine(x: 52, y: bounds.maxY - 1, width: bounds.width - 52, color: Theme.line)
+            PixelDraw.hLine(x: Theme.ls(52), y: bounds.maxY - Theme.ls(1), width: bounds.width - Theme.ls(52), color: Theme.line, thickness: max(1, Theme.ls(1)))
         }
 
         drawIcon(result)
@@ -38,7 +38,7 @@ final class ResultRowView: NSView {
         let title = NSMutableAttributedString(
             string: result.title,
             attributes: [
-                .font: Theme.display(15),
+                .font: Theme.launcherDisplay(15),
                 .foregroundColor: Theme.text,
                 .paragraphStyle: paragraph
             ]
@@ -51,7 +51,7 @@ final class ResultRowView: NSView {
         let subtitle = NSAttributedString(
             string: result.subtitle,
             attributes: [
-                .font: Theme.display(9),
+                .font: Theme.launcherDisplay(9),
                 .foregroundColor: isSelected ? Theme.textDim : Theme.textFaint,
                 .paragraphStyle: paragraph
             ]
@@ -59,12 +59,12 @@ final class ResultRowView: NSView {
         subtitle.draw(in: Layout.rowSubtitleRect(in: bounds))
 
         if isSelected {
-            PixelDraw.chevron(x: bounds.width - 21, y: 16, unit: 2, color: Theme.accent)
+            PixelDraw.chevron(x: bounds.width - Theme.ls(21), y: Theme.ls(16), unit: Theme.ls(2), color: Theme.accent)
         }
     }
 
     private func drawIcon(_ result: SearchResult) {
-        let box = CGRect(x: 18, y: 10, width: 22, height: 22)
+        let box = CGRect(x: Theme.ls(18), y: Theme.ls(10), width: Theme.ls(22), height: Theme.ls(22))
 
         switch result.icon {
         case .file(let url):
@@ -88,8 +88,8 @@ final class ResultRowView: NSView {
                     hints: [.interpolation: NSImageInterpolation.high]
                 )
             } else {
-                PixelGlyph.globe.image(size: 16, color: Theme.textDim).draw(
-                    in: CGRect(x: box.minX + 3, y: box.minY + 3, width: 16, height: 16)
+                PixelGlyph.globe.image(size: Theme.ls(16), color: Theme.textDim).draw(
+                    in: CGRect(x: box.minX + Theme.ls(3), y: box.minY + Theme.ls(3), width: Theme.ls(16), height: Theme.ls(16))
                 )
             }
 
@@ -97,12 +97,12 @@ final class ResultRowView: NSView {
             PixelDraw.fill(box, Theme.bgRaised)
             PixelDraw.frame(
                 box,
-                thickness: 1,
+                thickness: max(1, Theme.ls(1)),
                 color: isSelected ? Theme.accentDim : Theme.border,
-                notch: 2
+                notch: Theme.ls(2)
             )
-            glyph.image(size: 16, color: isSelected ? Theme.accent : Theme.textDim).draw(
-                in: CGRect(x: box.minX + 3, y: box.minY + 3, width: 16, height: 16),
+            glyph.image(size: Theme.ls(16), color: isSelected ? Theme.accent : Theme.textDim).draw(
+                in: CGRect(x: box.minX + Theme.ls(3), y: box.minY + Theme.ls(3), width: Theme.ls(16), height: Theme.ls(16)),
                 from: .zero,
                 operation: .sourceOver,
                 fraction: 1,

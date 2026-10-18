@@ -14,6 +14,7 @@ final class SearchViewController: NSViewController {
     private let scrollView = NSScrollView()
     private let tableView = ResultTableView()
     private let glowView = GlowView(frame: .zero)
+    private let resizeHandle = ResizeHandleView()
 
     private var results: [SearchResult] = []
     private var selectedIndex = 0
@@ -56,6 +57,20 @@ final class SearchViewController: NSViewController {
         rootView.addSubview(scrollView)
         rootView.addSubview(searchField)
         rootView.addSubview(glowView)
+
+        resizeHandle.frame = rootView.bounds
+        resizeHandle.autoresizingMask = [.width, .height]
+        resizeHandle.onScaleChanged = { [weak self] scale in
+            self?.applyLauncherScale(scale)
+        }
+        resizeHandle.onScaleCommitted = { [weak self] in
+            self?.persistLauncherScale()
+            self?.focus()
+        }
+        rootView.addSubview(resizeHandle, positioned: .above, relativeTo: glowView)
+
+        searchField.applyLauncherScale()
+        glowView.scale = Theme.launcherScale
         installQuickLookMonitor()
     }
 
@@ -68,18 +83,44 @@ final class SearchViewController: NSViewController {
         let fieldRect = Layout.fieldRect(in: bounds)
 
         glowView.frame = view.bounds
+        resizeHandle.frame = view.bounds
         scrollView.frame = listRect
         searchField.frame = CGRect(
-            x: panel.minX + 44,
-            y: fieldRect.minY + 12,
-            width: max(80, panel.width - 44 - 18),
-            height: 30
+            x: panel.minX + Theme.ls(44),
+            y: fieldRect.minY + Theme.ls(12),
+            width: max(80, panel.width - Theme.ls(44) - Theme.ls(18)),
+            height: Theme.ls(30)
         )
 
         if let column = tableView.tableColumns.first {
             column.width = listRect.width
         }
         resizeTable()
+        view.window?.invalidateCursorRects(for: resizeHandle)
+    }
+
+    /// Reflows the launcher for a new global scale. The actual window frame is
+    /// changed by the resize handle, which keeps the panel centered.
+    func applyLauncherScale(_ scale: CGFloat) {
+        let clamped = min(max(scale, Theme.minLauncherScale), Theme.maxLauncherScale)
+        guard abs(clamped - Theme.launcherScale) > 0.0001 else { return }
+
+        Theme.launcherScale = clamped
+        searchField.applyLauncherScale()
+        glowView.scale = clamped
+        tableView.rowHeight = Theme.rowHeight
+        view.needsLayout = true
+        view.layoutSubtreeIfNeeded()
+        resizeTable()
+        tableView.reloadData()
+        rootView.needsDisplay = true
+        glowView.needsDisplay = true
+        tableView.needsDisplay = true
+        resizeHandle.window?.invalidateCursorRects(for: resizeHandle)
+    }
+
+    private func persistLauncherScale() {
+        SettingsStore.shared.setLauncherScale(Double(Theme.launcherScale))
     }
 
     private func resizeTable() {
@@ -222,6 +263,12 @@ final class SearchViewController: NSViewController {
         // Keep the top edge fixed while the list grows/shrinks.
         frame.origin.y += frame.height - height
         frame.size = NSSize(width: width, height: height)
+        if let screen = window.screen {
+            let visible = screen.visibleFrame
+            let margin: CGFloat = 8
+            frame.origin.x = min(max(frame.minX, visible.minX + margin), visible.maxX - margin - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY + margin), visible.maxY - margin - frame.height)
+        }
         window.setFrame(frame, display: true, animate: false)
     }
 

@@ -33,16 +33,23 @@ enum Theme {
     static let accentDim = NSColor(hex: 0x9C7429)
     static let danger = NSColor(hex: 0xFF6B6B)
 
-    // Metrics
-    static let panelInset: CGFloat = 32
-    static let panelWidth: CGFloat = 700
-    static let headerHeight: CGFloat = 32
-    static let fieldHeight: CGFloat = 54
-    static let rowHeight: CGFloat = 42
-    static let footerHeight: CGFloat = 28
-    static let emptyListHeight: CGFloat = 66
+    // Launcher metrics. `launcherScale` is driven by the resize handles;
+    // everything visible in the launcher (layout, fonts, borders) multiplies
+    // through this value, while the Settings window keeps its own fixed size.
+    static let minLauncherScale: CGFloat = 0.7
+    static let maxLauncherScale: CGFloat = 2.2
+    static var launcherScale: CGFloat = 1
+
+    static func ls(_ value: CGFloat) -> CGFloat { value * launcherScale }
+
+    static var panelInset: CGFloat { ls(32) }
+    static var panelWidth: CGFloat { ls(700) }
+    static var headerHeight: CGFloat { ls(32) }
+    static var fieldHeight: CGFloat { ls(54) }
+    static var rowHeight: CGFloat { ls(42) }
+    static var footerHeight: CGFloat { ls(28) }
+    static var emptyListHeight: CGFloat { ls(66) }
     static let maxRows = 7
-    static let sidePadding: CGFloat = 18
 
     // Settings window
     static let settingsInset: CGFloat = 32
@@ -53,4 +60,12 @@ enum Theme {
 
     static func display(_ size: CGFloat) -> NSFont { PixelFont.regular(size) }
     static func displayBold(_ size: CGFloat) -> NSFont { PixelFont.bold(size) }
+
+    static func launcherDisplay(_ size: CGFloat) -> NSFont {
+        PixelFont.regular(size * launcherScale)
+    }
+
+    static func launcherDisplayBold(_ size: CGFloat) -> NSFont {
+        PixelFont.bold(size * launcherScale)
+    }
 }

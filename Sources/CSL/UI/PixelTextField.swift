@@ -44,6 +44,27 @@ final class PixelTextField: NSTextField {
         }
     }
 
+    /// The launcher field grows with the window; the Settings fields keep
+    /// their fixed font.
+    func applyLauncherScale() {
+        font = Theme.launcherDisplay(20)
+        if let cell = cell as? NSTextFieldCell {
+            cell.placeholderAttributedString = NSAttributedString(
+                string: "TYPE TO SEARCH",
+                attributes: [
+                    .font: Theme.launcherDisplay(15),
+                    .foregroundColor: Theme.textFaint
+                ]
+            )
+        }
+        if let editor = currentEditor() as? NSTextView {
+            editor.font = font
+            var attributes = editor.typingAttributes
+            attributes[.font] = font
+            editor.typingAttributes = attributes
+        }
+    }
+
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         styleEditor()

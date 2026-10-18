@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — 2026-10-18
+
+### Launcher
+- Resizable launcher: drag the glowing panel border or any corner to scale the entire interface — layout, fonts, icons, rows and glow.
+- The panel stays centered while scaling and is clamped to the visible screen. The chosen scale is persisted.
+
+### Documentation
+- Repository documentation is now English-only (GitHub has no per-language README routing).
+
 ## 0.2.0 — 2026-10-18
 
 First public release.

@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var watchTestFolder: String?
     private var watchCheckFolder: String?
     private var rankTest = false
+    private var scaleArgument: CGFloat?
     private var selftestStarted: CFTimeInterval = 0
     private var didLogSelftestFirstUpdate = false
 
@@ -36,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         parseArguments()
+        _ = SettingsStore.shared
+        applyInitialLauncherScale()
         buildPanel()
         buildStatusItem()
         installHotkey()
@@ -43,7 +46,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         engine.delegate = self
         engine.warmUp()
 
-        _ = SettingsStore.shared
         FileIndex.shared.loadAsync {
             FileWatcher.shared.sync()
         }
@@ -237,8 +239,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
 
         let started = CACurrentMediaTime()
+        let screen = screenUnderMouse()
+        let safeScale = safeLauncherScale(Theme.launcherScale, for: screen)
+        if abs(safeScale - Theme.launcherScale) > 0.0001 {
+            viewController.applyLauncherScale(safeScale)
+        }
         viewController.prepareForPresentation()
-        position(panel)
+        position(panel, on: screen)
         // Deliberately no NSApp.activate(): the non-activating panel becomes
         // key while the previous app stays frontmost, Spotlight-style.
         panel.makeKeyAndOrderFront(nil)
@@ -264,8 +271,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func position(_ window: NSWindow) {
-        let screen = screenUnderMouse()
+    private func position(_ window: NSWindow, on targetScreen: NSScreen? = nil) {
+        let screen = targetScreen ?? screenUnderMouse()
         let visible = screen.visibleFrame
         let size = window.frame.size
 
@@ -273,7 +280,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let topGap = max(48, visible.height * 0.13)
         // The panel sits Theme.panelInset below the window top edge.
         let y = visible.maxY - size.height - topGap + Theme.panelInset
-        window.setFrameOrigin(NSPoint(x: floor(x), y: floor(y)))
+        var frame = window.frame
+        frame.origin = NSPoint(x: floor(x), y: floor(y))
+        let margin: CGFloat = 8
+        frame.origin.x = min(max(frame.minX, visible.minX + margin), visible.maxX - margin - frame.width)
+        frame.origin.y = min(max(frame.minY, visible.minY + margin), visible.maxY - margin - frame.height)
+        window.setFrameOrigin(NSPoint(x: floor(frame.minX), y: floor(frame.minY)))
+    }
+
+    private func safeLauncherScale(_ requested: CGFloat, for screen: NSScreen) -> CGFloat {
+        let visible = screen.visibleFrame
+        let baseWidth = 700 + 2 * 32
+        let baseHeight = 32 + 54 + 28 + 7 * 42 + 2 * 32
+        let maxByWidth = (visible.width - 16) / CGFloat(baseWidth)
+        let maxByHeight = (visible.height - 16) / CGFloat(baseHeight)
+        let maximum = max(Theme.minLauncherScale,
+                          min(Theme.maxLauncherScale, maxByWidth, maxByHeight))
+        return min(max(requested, Theme.minLauncherScale), maximum)
+    }
+
+    private func applyInitialLauncherScale() {
+        let stored = CGFloat(SettingsStore.shared.settings.launcherScale ?? 1)
+        var scale = min(max(stored, Theme.minLauncherScale), Theme.maxLauncherScale)
+        if let override = scaleArgument {
+            scale = min(max(override, Theme.minLauncherScale), Theme.maxLauncherScale)
+        }
+        if let screen = NSScreen.main {
+            scale = safeLauncherScale(scale, for: screen)
+        }
+        Theme.launcherScale = scale
+        Log.debug(String(format: "launcher scale at launch: %.3f", scale))
     }
 
     private func screenUnderMouse() -> NSScreen {
@@ -474,6 +510,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         if let index = arguments.firstIndex(of: "--watch-check"), index + 1 < arguments.count {
             watchCheckFolder = arguments[index + 1]
+        }
+        if let index = arguments.firstIndex(of: "--scale"), index + 1 < arguments.count,
+           let value = Double(arguments[index + 1]) {
+            scaleArgument = CGFloat(value)
         }
         rankTest = arguments.contains("--rank-test")
         if let index = arguments.firstIndex(of: "--snapshot-delay"),

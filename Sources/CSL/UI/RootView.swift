@@ -44,11 +44,15 @@ enum Layout {
     }
 
     static func rowLabelRect(in bounds: CGRect) -> CGRect {
-        CGRect(x: 52, y: 6, width: max(10, bounds.width - 52 - 30), height: 18)
+        let left = Theme.ls(52)
+        let right = Theme.ls(30)
+        return CGRect(x: left, y: Theme.ls(6), width: max(10, bounds.width - left - right), height: Theme.ls(18))
     }
 
     static func rowSubtitleRect(in bounds: CGRect) -> CGRect {
-        CGRect(x: 52, y: 26, width: max(10, bounds.width - 52 - 30), height: 12)
+        let left = Theme.ls(52)
+        let right = Theme.ls(30)
+        return CGRect(x: left, y: Theme.ls(26), width: max(10, bounds.width - left - right), height: Theme.ls(12))
     }
 }
 
@@ -82,14 +86,14 @@ final class RootView: NSView {
         let panel = Layout.panelRect(in: bounds)
 
         // 1. hard pixel drop shadow
-        PixelDraw.fill(panel.offsetBy(dx: 4, dy: 4), Theme.shadow)
+        PixelDraw.fill(panel.offsetBy(dx: Theme.ls(4), dy: Theme.ls(4)), Theme.shadow)
 
         // 2. surface
         PixelDraw.fill(panel, Theme.bg)
 
         // 3. border (the animated halo/rim lives in GlowView above this view)
         let borderColor = Theme.border.blended(withFraction: 0.16, of: Theme.accent) ?? Theme.border
-        PixelDraw.frame(panel, thickness: 1, color: borderColor, notch: 3)
+        PixelDraw.frame(panel, thickness: max(1, Theme.ls(1)), color: borderColor, notch: Theme.ls(3))
 
         drawHeader(panel: panel)
         drawSearchRow(panel: panel)
@@ -102,28 +106,28 @@ final class RootView: NSView {
     private func drawHeader(panel: CGRect) {
         let rect = Layout.headerRect(in: bounds)
         PixelDraw.fill(rect, Theme.bgRaised)
-        PixelDraw.hLine(x: rect.minX, y: rect.maxY - 1, width: rect.width, color: Theme.line)
+        PixelDraw.hLine(x: rect.minX, y: rect.maxY - Theme.ls(1), width: rect.width, color: Theme.line, thickness: max(1, Theme.ls(1)))
 
-        PixelDraw.fill(CGRect(x: rect.minX + 18, y: rect.minY + 14, width: 4, height: 4), Theme.accent)
+        PixelDraw.fill(CGRect(x: rect.minX + Theme.ls(18), y: rect.minY + Theme.ls(14), width: Theme.ls(4), height: Theme.ls(4)), Theme.accent)
 
         let logoAttributes: [NSAttributedString.Key: Any] = [
-            .font: Theme.displayBold(15),
+            .font: Theme.launcherDisplayBold(15),
             .foregroundColor: Theme.accent
         ]
         let logoSize = ("CSL" as NSString).size(withAttributes: logoAttributes)
         ("CSL" as NSString).draw(
-            in: CGRect(x: rect.minX + 30, y: rect.minY + 8, width: logoSize.width + 4, height: 18),
+            in: CGRect(x: rect.minX + Theme.ls(30), y: rect.minY + Theme.ls(8), width: logoSize.width + Theme.ls(4), height: Theme.ls(18)),
             withAttributes: logoAttributes
         )
         ("COMMAND SEARCH LAUNCHER" as NSString).draw(
             in: CGRect(
-                x: rect.minX + 30 + logoSize.width + 10,
-                y: rect.minY + 13,
-                width: 260,
-                height: 12
+                x: rect.minX + Theme.ls(30) + logoSize.width + Theme.ls(10),
+                y: rect.minY + Theme.ls(13),
+                width: Theme.ls(260),
+                height: Theme.ls(12)
             ),
             withAttributes: [
-                .font: Theme.display(7.5),
+                .font: Theme.launcherDisplay(7.5),
                 .foregroundColor: Theme.textFaint
             ]
         )
@@ -131,19 +135,19 @@ final class RootView: NSView {
         // hotkey hint on the right
         let keyText = "CMD + SPACE"
         let keyAttributes: [NSAttributedString.Key: Any] = [
-            .font: Theme.display(8),
+            .font: Theme.launcherDisplay(8),
             .foregroundColor: Theme.textDim
         ]
         let keySize = (keyText as NSString).size(withAttributes: keyAttributes)
         let capRect = CGRect(
-            x: rect.maxX - keySize.width - 20,
-            y: rect.minY + 9,
-            width: keySize.width + 12,
-            height: 14
+            x: rect.maxX - keySize.width - Theme.ls(20),
+            y: rect.minY + Theme.ls(9),
+            width: keySize.width + Theme.ls(12),
+            height: Theme.ls(14)
         )
-        PixelDraw.frame(capRect, thickness: 1, color: Theme.border, notch: 2)
+        PixelDraw.frame(capRect, thickness: max(1, Theme.ls(1)), color: Theme.border, notch: Theme.ls(2))
         (keyText as NSString).draw(
-            in: CGRect(x: capRect.minX + 6, y: capRect.minY + 3, width: keySize.width + 2, height: 12),
+            in: CGRect(x: capRect.minX + Theme.ls(6), y: capRect.minY + Theme.ls(3), width: keySize.width + Theme.ls(2), height: Theme.ls(12)),
             withAttributes: keyAttributes
         )
     }
@@ -154,10 +158,10 @@ final class RootView: NSView {
         let rect = Layout.fieldRect(in: bounds)
 
         // prompt
-        PixelDraw.chevron(x: rect.minX + 20, y: rect.minY + 20, unit: 3, color: Theme.accent)
+        PixelDraw.chevron(x: rect.minX + Theme.ls(20), y: rect.minY + Theme.ls(20), unit: Theme.ls(3), color: Theme.accent)
 
         // baseline rule under the query
-        PixelDraw.hLine(x: rect.minX, y: rect.maxY - 1, width: rect.width, color: Theme.line)
+        PixelDraw.hLine(x: rect.minX, y: rect.maxY - Theme.ls(1), width: rect.width, color: Theme.line, thickness: max(1, Theme.ls(1)))
     }
 
     // MARK: - List / empty state
@@ -169,15 +173,15 @@ final class RootView: NSView {
         if isSearching {
             drawCentered(
                 "SEARCHING",
-                font: Theme.display(11),
+                font: Theme.launcherDisplay(11),
                 color: Theme.textDim,
-                in: rect.offsetBy(dx: 0, dy: -6)
+                in: rect.offsetBy(dx: 0, dy: -Theme.ls(6))
             )
             drawCentered(
                 "HOLD ON A TICK",
-                font: Theme.display(8),
+                font: Theme.launcherDisplay(8),
                 color: Theme.textFaint,
-                in: rect.offsetBy(dx: 0, dy: 14)
+                in: rect.offsetBy(dx: 0, dy: Theme.ls(14))
             )
             return
         }
@@ -185,15 +189,15 @@ final class RootView: NSView {
         if !query.isEmpty {
             drawCentered(
                 "NO RESULTS",
-                font: Theme.displayBold(13),
+                font: Theme.launcherDisplayBold(13),
                 color: Theme.text,
-                in: rect.offsetBy(dx: 0, dy: -8)
+                in: rect.offsetBy(dx: 0, dy: -Theme.ls(8))
             )
             drawCentered(
                 "\"\(query)\" NOT FOUND",
-                font: Theme.display(9),
+                font: Theme.launcherDisplay(9),
                 color: Theme.textFaint,
-                in: rect.offsetBy(dx: 0, dy: 12)
+                in: rect.offsetBy(dx: 0, dy: Theme.ls(12))
             )
         }
     }
@@ -206,7 +210,7 @@ final class RootView: NSView {
             .foregroundColor: color,
             .paragraphStyle: paragraph
         ]
-        let height: CGFloat = 16
+        let height = Theme.ls(16)
         (text as NSString).draw(
             in: CGRect(x: rect.minX, y: rect.midY - height / 2, width: rect.width, height: height),
             withAttributes: attributes
@@ -217,9 +221,9 @@ final class RootView: NSView {
 
     private func drawFooter(panel: CGRect) {
         let rect = Layout.footerRect(in: bounds)
-        PixelDraw.hLine(x: rect.minX, y: rect.minY, width: rect.width, color: Theme.line)
+        PixelDraw.hLine(x: rect.minX, y: rect.minY, width: rect.width, color: Theme.line, thickness: max(1, Theme.ls(1)))
 
-        var cursor: CGFloat = rect.minX + 18
+        var cursor: CGFloat = rect.minX + Theme.ls(18)
         cursor = drawHint(key: "UP/DOWN", label: "NAVIGATE", at: cursor, centerY: rect.midY)
         cursor = drawHint(key: "ENTER", label: "OPEN", at: cursor, centerY: rect.midY)
         cursor = drawHint(key: "CMD+ENTER", label: "REVEAL", at: cursor, centerY: rect.midY)
@@ -240,9 +244,9 @@ final class RootView: NSView {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .right
         (status as NSString).draw(
-            in: CGRect(x: rect.maxX - 220, y: rect.minY + 8, width: 202, height: 12),
+            in: CGRect(x: rect.maxX - Theme.ls(220), y: rect.minY + Theme.ls(8), width: Theme.ls(202), height: Theme.ls(12)),
             withAttributes: [
-                .font: Theme.display(8.5),
+                .font: Theme.launcherDisplay(8.5),
                 .foregroundColor: statusOverride != nil
                     ? Theme.accent
                     : (isSearching ? Theme.accentDim : Theme.textFaint),
@@ -254,31 +258,31 @@ final class RootView: NSView {
     @discardableResult
     private func drawHint(key: String, label: String, at x: CGFloat, centerY: CGFloat) -> CGFloat {
         let keyAttributes: [NSAttributedString.Key: Any] = [
-            .font: Theme.display(8),
+            .font: Theme.launcherDisplay(8),
             .foregroundColor: Theme.textDim
         ]
         let keySize = (key as NSString).size(withAttributes: keyAttributes)
         let capRect = CGRect(
             x: x,
-            y: centerY - 7,
-            width: keySize.width + 10,
-            height: 14
+            y: centerY - Theme.ls(7),
+            width: keySize.width + Theme.ls(10),
+            height: Theme.ls(14)
         ).integral
-        PixelDraw.frame(capRect, thickness: 1, color: Theme.border, notch: 2)
+        PixelDraw.frame(capRect, thickness: max(1, Theme.ls(1)), color: Theme.border, notch: Theme.ls(2))
         (key as NSString).draw(
-            in: CGRect(x: capRect.minX + 5, y: capRect.minY + 3, width: keySize.width + 2, height: 10),
+            in: CGRect(x: capRect.minX + Theme.ls(5), y: capRect.minY + Theme.ls(3), width: keySize.width + Theme.ls(2), height: Theme.ls(10)),
             withAttributes: keyAttributes
         )
 
         let labelAttributes: [NSAttributedString.Key: Any] = [
-            .font: Theme.display(8.5),
+            .font: Theme.launcherDisplay(8.5),
             .foregroundColor: Theme.textFaint
         ]
         let labelSize = (label as NSString).size(withAttributes: labelAttributes)
         (label as NSString).draw(
-            in: CGRect(x: capRect.maxX + 6, y: centerY - 6, width: labelSize.width + 2, height: 12),
+            in: CGRect(x: capRect.maxX + Theme.ls(6), y: centerY - Theme.ls(6), width: labelSize.width + Theme.ls(2), height: Theme.ls(12)),
             withAttributes: labelAttributes
         )
-        return capRect.maxX + 6 + labelSize.width + 16
+        return capRect.maxX + Theme.ls(6) + labelSize.width + Theme.ls(16)
     }
 }

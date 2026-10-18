@@ -11,6 +11,9 @@ final class GlowView: NSView {
         CGRect(x: panel.minX + 18, y: panel.minY + 14, width: 4, height: 4)
     }
 
+    /// 1 for the Settings window, `Theme.launcherScale` for the launcher.
+    var scale: CGFloat = 1
+
     private let rings: [(CGFloat, CGFloat)] = [(1, 0.40), (2, 0.18), (4, 0.08), (7, 0.03)]
 
     override var isOpaque: Bool { false }
@@ -72,13 +75,13 @@ final class GlowView: NSView {
         context.setFillColor(Theme.accent.cgColor)
         context.setShadow(
             offset: .zero,
-            blur: 26,
+            blur: 26 * scale,
             color: Theme.accent.withAlphaComponent(0.34).cgColor
         )
         context.fill(panel)
         context.setShadow(
             offset: .zero,
-            blur: 7,
+            blur: 7 * scale,
             color: Theme.accent.withAlphaComponent(0.50).cgColor
         )
         context.fill(panel)
@@ -87,26 +90,26 @@ final class GlowView: NSView {
         // Crisp pixel rings so the glow still reads as 8-bit art.
         for (distance, alpha) in rings {
             PixelDraw.frame(
-                panel.insetBy(dx: -distance, dy: -distance),
-                thickness: 1,
+                panel.insetBy(dx: -distance * scale, dy: -distance * scale),
+                thickness: max(1, scale),
                 color: Theme.accent.withAlphaComponent(alpha),
-                notch: 2
+                notch: max(2, 2 * scale)
             )
         }
 
         // Warm rim just inside the panel border.
         PixelDraw.frame(
-            panel.insetBy(dx: 1, dy: 1),
-            thickness: 1,
+            panel.insetBy(dx: scale, dy: scale),
+            thickness: max(1, scale),
             color: Theme.accent.withAlphaComponent(0.11),
-            notch: 2
+            notch: max(2, 2 * scale)
         )
 
         // Pulsing bloom around the little status LED, if this window has one.
         if let led = ledRectProvider?(panel) {
-            PixelDraw.fill(led.insetBy(dx: -5, dy: -5), Theme.accent.withAlphaComponent(0.03))
-            PixelDraw.fill(led.insetBy(dx: -3, dy: -3), Theme.accent.withAlphaComponent(0.06))
-            PixelDraw.fill(led.insetBy(dx: -1, dy: -1), Theme.accent.withAlphaComponent(0.12))
+            PixelDraw.fill(led.insetBy(dx: -5 * scale, dy: -5 * scale), Theme.accent.withAlphaComponent(0.03))
+            PixelDraw.fill(led.insetBy(dx: -3 * scale, dy: -3 * scale), Theme.accent.withAlphaComponent(0.06))
+            PixelDraw.fill(led.insetBy(dx: -1 * scale, dy: -1 * scale), Theme.accent.withAlphaComponent(0.12))
         }
     }
 }
