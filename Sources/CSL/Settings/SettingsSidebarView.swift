@@ -5,6 +5,7 @@ final class SettingsSidebarView: NSView {
         ("ORDNER", .folder),
         ("IGNORIEREN", .ban),
         ("WEBSITES", .globe),
+        ("ANIMATION", .sparkle),
         ("ALLGEMEIN", .gear)
     ]
 

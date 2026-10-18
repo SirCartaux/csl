@@ -17,13 +17,12 @@ final class SearchViewController: NSViewController {
     private let resizeHandle = ResizeHandleView()
     private let placeholderView = SearchPlaceholderView()
     private let rootReveal = PixelRevealGrid()
-    private let resultsReveal = PixelRevealGrid()
     private var pixelOpenWork: DispatchWorkItem?
     private var pixelCloseWork: DispatchWorkItem?
-    private var pixelResultsWork: DispatchWorkItem?
     private var pixelRevealActive = false
     private var pixelClosing = false
-    private var lastResultsSignature = ""
+    private var rowReveals: [(grid: PixelRevealGrid, layer: CALayer)] = []
+    private var rowRevealWork: DispatchWorkItem?
 
     private var results: [SearchResult] = []
     private var selectedIndex = 0
@@ -49,6 +48,15 @@ final class SearchViewController: NSViewController {
         max(6, 10 * Theme.launcherScale)
     }
 
+    private var rowPixelCellSize: CGFloat {
+        max(6, 10 * Theme.launcherScale)
+    }
+
+    /// 1.0 is the old timing; lower settings are slower (longer delays).
+    private var pixelTimeScale: Double {
+        1.0 / SettingsStore.shared.pixelAnimationSpeed
+    }
+
     private var fieldCenter: CGPoint {
         CGPoint(x: searchField.frame.midX, y: searchField.frame.midY)
     }
@@ -59,13 +67,6 @@ final class SearchViewController: NSViewController {
         CGPoint(
             x: fieldCenter.x,
             y: max(0, rootView.bounds.height - fieldCenter.y)
-        )
-    }
-
-    private var listMaskSize: CGSize {
-        CGSize(
-            width: max(1, scrollView.bounds.width),
-            height: max(1, CGFloat(Theme.maxRows) * Theme.rowHeight)
         )
     }
 
@@ -245,7 +246,6 @@ final class SearchViewController: NSViewController {
 
     func prepareForPresentation() {
         cancelPixelAnimations()
-        lastResultsSignature = ""
         clearStatus()
         isNavigatingResults = false
         if previewIsOpen {
@@ -283,11 +283,6 @@ final class SearchViewController: NSViewController {
             cellSize: pixelCellSize,
             style: .radial(center: radialMaskCenter)
         )
-        resultsReveal.prewarm(
-            size: listMaskSize,
-            cellSize: pixelCellSize,
-            style: .random
-        )
     }
 
     /// Hide the content behind a pixel mask before the panel is ordered front.
@@ -312,9 +307,9 @@ final class SearchViewController: NSViewController {
         guard animationsEnabled, pixelRevealActive, let layer = rootView.layer else { return }
         let total = rootReveal.animateOpen(
             on: layer,
-            spread: 0.12,
-            jitter: 0.05,
-            duration: 0.001
+            spread: 0.12 * pixelTimeScale,
+            jitter: 0.05 * pixelTimeScale,
+            duration: 0.001 * pixelTimeScale
         )
         pixelOpenWork?.cancel()
         let work = DispatchWorkItem { [weak self, weak layer] in
@@ -351,9 +346,9 @@ final class SearchViewController: NSViewController {
         )
         let total = rootReveal.animateClose(
             on: layer,
-            spread: 0.12,
-            jitter: 0.05,
-            duration: 0.001
+            spread: 0.12 * pixelTimeScale,
+            jitter: 0.05 * pixelTimeScale,
+            duration: 0.001 * pixelTimeScale
         )
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -370,52 +365,74 @@ final class SearchViewController: NSViewController {
         pixelOpenWork = nil
         pixelCloseWork?.cancel()
         pixelCloseWork = nil
-        pixelResultsWork?.cancel()
-        pixelResultsWork = nil
+        cancelRowReveals()
         if let layer = rootView.layer {
             rootReveal.clear(from: layer)
-        }
-        if let layer = scrollView.layer {
-            resultsReveal.clear(from: layer)
         }
         pixelRevealActive = false
         pixelClosing = false
     }
 
-    /// A very short left-to-right pixel wave whenever the result set changes.
-    private func animateResultsIfNeeded() {
+    /// Only newly added result rows get the pixel reveal. Rows that were
+    /// already on screen stay untouched when async results arrive later.
+    private func animateNewRows(_ indices: [Int]) {
         guard animationsEnabled,
               view.window?.isVisible == true,
               !pixelRevealActive,
-              !pixelClosing else { return }
+              !pixelClosing,
+              !indices.isEmpty else { return }
 
-        let signature = results.map(\.id).joined(separator: "\u{1F}")
-        guard signature != lastResultsSignature else { return }
-        lastResultsSignature = signature
+        cancelRowReveals()
+        tableView.layoutSubtreeIfNeeded()
 
-        scrollView.wantsLayer = true
-        guard let layer = scrollView.layer else { return }
-        pixelResultsWork?.cancel()
-        resultsReveal.clear(from: layer)
-        resultsReveal.prepare(
-            on: layer,
-            size: listMaskSize,
-            cellSize: pixelCellSize,
-            style: .random,
-            visible: false
-        )
-        let total = resultsReveal.animateOpen(
-            on: layer,
-            spread: 0.08,
-            jitter: 0,
-            duration: 0.001
-        )
-        let work = DispatchWorkItem { [weak self, weak layer] in
-            guard let self, let layer else { return }
-            self.resultsReveal.clear(from: layer)
+        var newReveals: [(grid: PixelRevealGrid, layer: CALayer)] = []
+        var maxTotal: TimeInterval = 0
+        for index in indices {
+            guard let rowView = tableView.rowView(atRow: index, makeIfNecessary: true) else { continue }
+            rowView.wantsLayer = true
+            guard let layer = rowView.layer,
+                  rowView.bounds.width > 1,
+                  rowView.bounds.height > 1 else { continue }
+
+            let grid = PixelRevealGrid()
+            grid.prepare(
+                on: layer,
+                size: rowView.bounds.size,
+                cellSize: rowPixelCellSize,
+                style: .random,
+                visible: false
+            )
+            let total = grid.animateOpen(
+                on: layer,
+                spread: 0.08 * pixelTimeScale,
+                jitter: 0,
+                duration: 0.001 * pixelTimeScale
+            )
+            maxTotal = max(maxTotal, total)
+            newReveals.append((grid, layer))
         }
-        pixelResultsWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + total, execute: work)
+
+        guard !newReveals.isEmpty else { return }
+        rowReveals = newReveals
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            for (grid, layer) in self.rowReveals {
+                grid.clear(from: layer)
+            }
+            self.rowReveals.removeAll()
+            self.rowRevealWork = nil
+        }
+        rowRevealWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + maxTotal, execute: work)
+    }
+
+    private func cancelRowReveals() {
+        rowRevealWork?.cancel()
+        rowRevealWork = nil
+        for (grid, layer) in rowReveals {
+            grid.clear(from: layer)
+        }
+        rowReveals.removeAll()
     }
 
     func stopGlow() {
@@ -483,6 +500,11 @@ final class SearchViewController: NSViewController {
         let previousID: String? = self.results.indices.contains(selectedIndex)
             ? self.results[selectedIndex].id
             : nil
+        let previousIDs = Set(self.results.map(\.id))
+        let resultsChanged = self.results.map(\.id) != results.map(\.id)
+        if resultsChanged {
+            cancelRowReveals()
+        }
 
         self.results = results
 
@@ -511,7 +533,9 @@ final class SearchViewController: NSViewController {
         rootView.isSearching = isSearching
         rootView.needsDisplay = true
         refreshWindowSize()
-        animateResultsIfNeeded()
+
+        let newRows = results.indices.filter { !previousIDs.contains(results[$0].id) }
+        animateNewRows(newRows)
     }
 
     // MARK: - Selection

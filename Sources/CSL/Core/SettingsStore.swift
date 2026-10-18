@@ -26,12 +26,17 @@ struct CSLSettings: Codable {
     var ignoredExtensions: [String] = []
     var websites: [WebsiteEntry] = []
     var launcherScale: Double? = nil
+    var pixelAnimationSpeed: Double? = nil
 }
 
 /// Single source of truth for user preferences. Persisted as JSON in
 /// ~/Library/Application Support/CSL/settings.json.
 final class SettingsStore {
     static let shared = SettingsStore()
+
+    static let defaultPixelAnimationSpeed: Double = 0.65
+    static let minPixelAnimationSpeed: Double = 0.5
+    static let maxPixelAnimationSpeed: Double = 2.0
 
     private(set) var settings: CSLSettings
     private var ignoredExtensionSet: Set<String> = []
@@ -77,6 +82,20 @@ final class SettingsStore {
         let clamped = min(max(value, 0.7), 2.2)
         guard settings.launcherScale != clamped else { return }
         settings.launcherScale = clamped
+        save(notify: false)
+    }
+
+    /// Animation speed multiplies the visual timing (1.0 = old speed,
+    /// lower = slower). Persisting it never refreshes the search engine.
+    var pixelAnimationSpeed: Double {
+        let value = settings.pixelAnimationSpeed ?? Self.defaultPixelAnimationSpeed
+        return min(max(value, Self.minPixelAnimationSpeed), Self.maxPixelAnimationSpeed)
+    }
+
+    func setPixelAnimationSpeed(_ value: Double) {
+        let clamped = min(max(value, Self.minPixelAnimationSpeed), Self.maxPixelAnimationSpeed)
+        guard abs(pixelAnimationSpeed - clamped) > 0.0001 else { return }
+        settings.pixelAnimationSpeed = clamped
         save(notify: false)
     }
 

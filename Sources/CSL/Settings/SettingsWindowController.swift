@@ -4,6 +4,7 @@ enum SettingsTab: String, CaseIterable {
     case folders
     case ignore
     case websites
+    case animation
     case general
 
     var title: String {
@@ -11,6 +12,7 @@ enum SettingsTab: String, CaseIterable {
         case .folders: return "ORDNER"
         case .ignore: return "IGNORIEREN"
         case .websites: return "WEBSITES"
+        case .animation: return "ANIMATION"
         case .general: return "ALLGEMEIN"
         }
     }
@@ -143,6 +145,8 @@ final class SettingsWindowController: NSObject {
             section = IgnoreSection(frame: rootView.contentContainer.bounds)
         case .websites:
             section = WebsitesSection(frame: rootView.contentContainer.bounds)
+        case .animation:
+            section = AnimationSection(frame: rootView.contentContainer.bounds)
         case .general:
             section = GeneralSection(frame: rootView.contentContainer.bounds)
         }
