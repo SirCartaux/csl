@@ -1,9 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.4.2 — 2026-10-19
 
 ### Search
-- Stream every likely file hit into the result list as the index scan finds it, ranked into position immediately. The first 7 are cached only after the scan finishes.
+- Every likely file hit (prefix / word-start matches) is streamed into the result list as the index scan finds it — no fixed first-16 cut.
+- New hits are inserted at their final ranked position immediately; a scrolled result list keeps its position instead of jumping back to the top.
+- The first 7 files are written to the 30 MB cache only after the scan has fully finished, in final ranked order.
+
+### Launcher
 - A small bottom-right pixel activity ring plus a compact `SCAN 16,4K/71,2K` counter runs while the file index is being scanned.
 
 ## 0.4.1 — 2026-10-19
