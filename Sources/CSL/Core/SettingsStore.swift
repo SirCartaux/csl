@@ -28,7 +28,9 @@ struct CSLSettings: Codable {
     var launcherScale: Double? = nil
     var pixelAnimationSpeed: Double? = nil
     var pixelAnimationSpeedV2: Double? = nil
-    var resultBlurEnabled: Bool? = nil
+    var resultGlowEnabled: Bool? = nil
+    var resultGlowIntensity: Double? = nil
+    var resultGlowDuration: Double? = nil
 }
 
 /// Single source of truth for user preferences. Persisted as JSON in
@@ -103,13 +105,35 @@ final class SettingsStore {
         save(notify: false)
     }
 
-    var resultBlurEnabled: Bool {
-        settings.resultBlurEnabled ?? true
+    var resultGlowEnabled: Bool {
+        settings.resultGlowEnabled ?? true
     }
 
-    func setResultBlurEnabled(_ enabled: Bool) {
-        guard resultBlurEnabled != enabled else { return }
-        settings.resultBlurEnabled = enabled
+    var resultGlowIntensity: Double {
+        min(max(settings.resultGlowIntensity ?? 0.55, 0.1), 1.0)
+    }
+
+    var resultGlowDuration: Double {
+        min(max(settings.resultGlowDuration ?? 0.30, 0.12), 0.8)
+    }
+
+    func setResultGlowEnabled(_ enabled: Bool) {
+        guard resultGlowEnabled != enabled else { return }
+        settings.resultGlowEnabled = enabled
+        save(notify: false)
+    }
+
+    func setResultGlowIntensity(_ value: Double) {
+        let clamped = min(max(value, 0.1), 1.0)
+        guard abs(resultGlowIntensity - clamped) > 0.0001 else { return }
+        settings.resultGlowIntensity = clamped
+        save(notify: false)
+    }
+
+    func setResultGlowDuration(_ value: Double) {
+        let clamped = min(max(value, 0.12), 0.8)
+        guard abs(resultGlowDuration - clamped) > 0.0001 else { return }
+        settings.resultGlowDuration = clamped
         save(notify: false)
     }
 

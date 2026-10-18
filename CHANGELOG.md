@@ -7,8 +7,8 @@
 - Pixel animation is GPU-composited, pre-warmed, and does not touch the search path.
 - Settings → Animation: speed slider from 0,25× to 2,0×, default 1,00×; the previous timing is now 1,00×.
 - Async search updates now animate only the newly added result rows, never the whole list.
-- Result rows now use a smooth slide-in from the side with a Gaussian-blurred snapshot that crossfades into the sharp row; the pixel reveal is reserved for the launcher frame.
-- The result blur can be switched off in Settings → Animation (the row still slides/fades sharply).
+- New result rows get a small amber glow that fades out quickly; only the newly added visible rows glow, existing rows stay untouched.
+- The glow has settings for on/off, intensity (default 0,55) and fade time (default 0,30 s).
 
 ## 0.3.0 — 2026-10-18
 

@@ -81,18 +81,16 @@ final class PixelSlider: NSView {
 final class AnimationSection: SettingsSection {
     private let slider = PixelSlider()
     private let resetButton = ClosureButton("STANDARD 1,00X", style: .ghost) {}
-    private let blurButton = ClosureButton("AN", style: .primary) {}
+    private let glowButton = ClosureButton("AN", style: .primary) {}
+    private let glowIntensitySlider = PixelSlider()
+    private let glowDurationSlider = PixelSlider()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         slider.minValue = SettingsStore.minPixelAnimationSpeed
         slider.maxValue = SettingsStore.maxPixelAnimationSpeed
-        slider.onChange = { [weak self] _ in
-            self?.needsDisplay = true
-        }
-        slider.onCommit = { value in
-            SettingsStore.shared.setPixelAnimationSpeed(value)
-        }
+        slider.onChange = { [weak self] _ in self?.needsDisplay = true }
+        slider.onCommit = { value in SettingsStore.shared.setPixelAnimationSpeed(value) }
         addSubview(slider)
 
         resetButton.setAction { [weak self] in
@@ -101,11 +99,27 @@ final class AnimationSection: SettingsSection {
         }
         addSubview(resetButton)
 
-        blurButton.setAction { [weak self] in
-            SettingsStore.shared.setResultBlurEnabled(!SettingsStore.shared.resultBlurEnabled)
+        glowButton.setAction { [weak self] in
+            SettingsStore.shared.setResultGlowEnabled(!SettingsStore.shared.resultGlowEnabled)
             self?.reload()
         }
-        addSubview(blurButton)
+        addSubview(glowButton)
+
+        glowIntensitySlider.minValue = 0.1
+        glowIntensitySlider.maxValue = 1.0
+        glowIntensitySlider.onChange = { [weak self] _ in self?.needsDisplay = true }
+        glowIntensitySlider.onCommit = { value in
+            SettingsStore.shared.setResultGlowIntensity(value)
+        }
+        addSubview(glowIntensitySlider)
+
+        glowDurationSlider.minValue = 0.12
+        glowDurationSlider.maxValue = 0.8
+        glowDurationSlider.onChange = { [weak self] _ in self?.needsDisplay = true }
+        glowDurationSlider.onCommit = { value in
+            SettingsStore.shared.setResultGlowDuration(value)
+        }
+        addSubview(glowDurationSlider)
     }
 
     required init?(coder: NSCoder) {
@@ -116,18 +130,19 @@ final class AnimationSection: SettingsSection {
         super.layout()
         slider.frame = CGRect(x: 0, y: 104, width: min(380, bounds.width), height: 30)
         resetButton.frame = CGRect(x: 0, y: 276, width: 180, height: 28)
-        blurButton.frame = CGRect(x: 0, y: 340, width: 70, height: 28)
+        glowButton.frame = CGRect(x: 0, y: 332, width: 70, height: 28)
+        glowIntensitySlider.frame = CGRect(x: 0, y: 390, width: min(220, bounds.width), height: 26)
+        glowDurationSlider.frame = CGRect(x: 0, y: 462, width: min(220, bounds.width), height: 26)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         drawHeader(
             title: "ANIMATION",
-            subtitle: "PIXELAUFTAUCHEN, NEUE ERGEBNISSE UND SCHLIESSEN."
+            subtitle: "PIXEL, GLOW UND GESCHWINDIGKEIT."
         )
 
         drawText("GESCHWINDIGKEIT", x: 0, y: 64, width: 220, font: 8.5, color: Theme.textDim)
-        let valueText = speedText(slider.value)
-        drawText(valueText, x: bounds.width - 120, y: 60, width: 120, font: 14, color: Theme.accent, bold: true, align: .right)
+        drawText(speedText(slider.value), x: bounds.width - 120, y: 60, width: 120, font: 14, color: Theme.accent, bold: true, align: .right)
 
         drawText("LANGSAM", x: 0, y: 140, width: 90, font: 8, color: Theme.textFaint)
         drawText("SCHNELL", x: bounds.width - 90, y: 140, width: 90, font: 8, color: Theme.textFaint, align: .right)
@@ -136,54 +151,50 @@ final class AnimationSection: SettingsSection {
 
         PixelDraw.hLine(x: 0, y: 176, width: bounds.width, color: Theme.line)
 
-        drawText(
-            "DIE PIXEL SPRINGEN WEITERHIN HART VON 0 AUF 100 %, OHNE FADE.",
-            x: 0,
-            y: 196,
-            width: bounds.width,
-            font: 8,
-            color: Theme.textFaint
-        )
-        drawText(
-            "NEUE ERGEBNISSE BLENDEN NUR DIE NEUEN ZEILEN EIN, NICHT DIE GANZE LISTE.",
-            x: 0,
-            y: 214,
-            width: bounds.width,
-            font: 8,
-            color: Theme.textFaint
-        )
-        drawText(
-            "DER STANDARD ENTSPRICHT DEM BISHERIGEN TIMING.",
-            x: 0,
-            y: 232,
-            width: bounds.width,
-            font: 8,
-            color: Theme.textFaint
-        )
+        drawText("DIE PIXEL SPRINGEN WEITERHIN HART VON 0 AUF 100 %, OHNE FADE.",
+                 x: 0, y: 196, width: bounds.width, font: 8, color: Theme.textFaint)
+        drawText("NEUE ERGEBNISSE BEKOMMEN EINEN KURZEN GLOW, NUR DIE NEUEN ZEILEN.",
+                 x: 0, y: 214, width: bounds.width, font: 8, color: Theme.textFaint)
+        drawText("DER STANDARD ENTSPRICHT DEM BISHERIGEN TIMING.",
+                 x: 0, y: 232, width: bounds.width, font: 8, color: Theme.textFaint)
 
         drawText("1,00X IST DER STANDARD.", x: 194, y: 284, width: bounds.width - 194, font: 8, color: Theme.textFaint)
 
-        drawText("ERGEBNIS-BLUR", x: 0, y: 312, width: 220, font: 8.5, color: Theme.textDim)
-        drawText(
-            "GAUSSIAN BLUR BEI NEUEN ERGEBNISZEILEN.",
-            x: 84,
-            y: 346,
-            width: bounds.width - 84,
-            font: 8,
-            color: Theme.textFaint
-        )
+        PixelDraw.hLine(x: 0, y: 304, width: bounds.width, color: Theme.line)
+        drawText("ERGEBNIS-GLOW", x: 0, y: 312, width: 220, font: 8.5, color: Theme.textDim)
+        drawText("GLOW BEI NEUEN ERGEBNISZEILEN.", x: 84, y: 338, width: bounds.width - 84, font: 8, color: Theme.textFaint)
+
+        drawText("INTENSITÄT", x: 0, y: 372, width: 160, font: 8, color: Theme.textFaint)
+        drawText(intensityText(glowIntensitySlider.value), x: bounds.width - 100, y: 370, width: 100, font: 9, color: Theme.accent, bold: true, align: .right)
+        drawText("SCHWACH", x: 0, y: 424, width: 90, font: 7.5, color: Theme.textFaint)
+        drawText("STARK", x: 160, y: 424, width: 60, font: 7.5, color: Theme.textFaint, align: .right)
+
+        drawText("ABKLINGZEIT", x: 0, y: 446, width: 160, font: 8, color: Theme.textFaint)
+        drawText(durationText(glowDurationSlider.value), x: bounds.width - 100, y: 444, width: 100, font: 9, color: Theme.accent, bold: true, align: .right)
+        drawText("SCHNELL", x: 0, y: 496, width: 90, font: 7.5, color: Theme.textFaint)
+        drawText("LANGSAM", x: 160, y: 496, width: 60, font: 7.5, color: Theme.textFaint, align: .right)
     }
 
     override func reload() {
         slider.value = SettingsStore.shared.pixelAnimationSpeed
-        blurButton.title = SettingsStore.shared.resultBlurEnabled ? "AN" : "AUS"
-        blurButton.style = SettingsStore.shared.resultBlurEnabled ? .primary : .ghost
-        blurButton.needsDisplay = true
+        glowButton.title = SettingsStore.shared.resultGlowEnabled ? "AN" : "AUS"
+        glowButton.style = SettingsStore.shared.resultGlowEnabled ? .primary : .ghost
+        glowButton.needsDisplay = true
+        glowIntensitySlider.value = SettingsStore.shared.resultGlowIntensity
+        glowDurationSlider.value = SettingsStore.shared.resultGlowDuration
         needsDisplay = true
     }
 
     private func speedText(_ speed: Double) -> String {
         let formatted = String(format: "%.2f", speed).replacingOccurrences(of: ".", with: ",")
         return "\(formatted)X"
+    }
+
+    private func intensityText(_ value: Double) -> String {
+        String(format: "%.2f", value).replacingOccurrences(of: ".", with: ",")
+    }
+
+    private func durationText(_ value: Double) -> String {
+        String(format: "%.2f S", value).replacingOccurrences(of: ".", with: ",")
     }
 }

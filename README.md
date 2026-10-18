@@ -68,7 +68,7 @@ window, field editor and focus is more direct in AppKit.
 - **Real settings window** (search `CSL SETTINGS`, or use the menu bar): index folders with progress, percentage and ETA; ignore folders and extensions; add websites with automatically fetched favicons.
 - **Menu bar item:** open, settings, launch at login, keyboard shortcuts, quit.
 - **Pixel UI:** Silkscreen, hard edges, notched corners, hard shadows and an animated amber glow at 0% idle CPU.
-- **Reveal animation:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar and closing removes pixels from the outside in. New result rows slide in smoothly from the side with a Gaussian-blurred snapshot that crossfades into the sharp row. GPU-composited, pre-warmed, zero cost to the search path; speed is adjustable in **Settings → Animation** (0,25×–2,0×, default 1,00×).
+- **Reveal effect:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar and closing removes pixels from the outside in. New result rows get a small amber glow that fades out quickly. GPU-composited, pre-warmed, zero cost to the search path; open/close speed is adjustable in **Settings → Animation** (0,25×–2,0×, default 1,00×).
 - **German and English search keywords** (`papierkorb`, `einstellungen`, `settings`, …).
 
 ---
@@ -208,10 +208,12 @@ run; default exclusions below.
 ### Animation
 
 A speed slider from **0,25× (slow)** to **2,0× (fast)**, default **1,00×**.
-It changes the open/close pixel wave and the smooth new-row slide without
-touching search performance. The launcher pixels still jump hard from 0 to 100 %;
-result rows get the Gaussian-blur slide instead of a pixel reveal. **ERGEBNIS-BLUR**
-switches the blur off; the row then slides and fades in sharply.
+It changes the open/close pixel wave without touching search performance. The
+launcher pixels still jump hard from 0 to 100 %.
+
+The small **ERGEBNIS-GLOW** for new result rows has its own controls:
+**on/off**, **intensity** (default 0,55) and **fade time** (default 0,30 s).
+Only the newly added visible rows glow; existing rows are untouched.
 
 ### General
 
