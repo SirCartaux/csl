@@ -34,8 +34,8 @@ struct CSLSettings: Codable {
 final class SettingsStore {
     static let shared = SettingsStore()
 
-    static let defaultPixelAnimationSpeed: Double = 0.65
-    static let minPixelAnimationSpeed: Double = 0.5
+    static let defaultPixelAnimationSpeed: Double = 0.5
+    static let minPixelAnimationSpeed: Double = 0.25
     static let maxPixelAnimationSpeed: Double = 2.0
 
     private(set) var settings: CSLSettings

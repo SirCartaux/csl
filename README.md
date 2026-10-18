@@ -68,7 +68,7 @@ window, field editor and focus is more direct in AppKit.
 - **Real settings window** (search `CSL SETTINGS`, or use the menu bar): index folders with progress, percentage and ETA; ignore folders and extensions; add websites with automatically fetched favicons.
 - **Menu bar item:** open, settings, launch at login, keyboard shortcuts, quit.
 - **Pixel UI:** Silkscreen, hard edges, notched corners, hard shadows and an animated amber glow at 0% idle CPU.
-- **Pixel reveal:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar, results appear in a random pixel order, and closing removes pixels from the outside in. New async results animate only their new rows. GPU-composited, pre-warmed, zero cost to the search path; speed is adjustable in **Settings → Animation** (0,5×–2,0×, default 0,65×).
+- **Pixel reveal:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar, results appear in a random pixel order, and closing removes pixels from the outside in. New async results animate only their new rows. GPU-composited, pre-warmed, zero cost to the search path; speed is adjustable in **Settings → Animation** (0,25×–2,0×, default 0,50×).
 - **German and English search keywords** (`papierkorb`, `einstellungen`, `settings`, …).
 
 ---
@@ -207,7 +207,7 @@ run; default exclusions below.
 
 ### Animation
 
-A pixel slider from **0,5× (slow)** to **2,0× (fast)**, default **0,65×**.
+A pixel slider from **0,25× (slow)** to **2,0× (fast)**, default **0,50×**.
 It changes the timing of the open/close wave and the new-row reveal without
 touching search performance. The pixels still jump hard from 0 to 100 %.
 

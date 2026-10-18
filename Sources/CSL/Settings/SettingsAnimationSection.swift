@@ -6,7 +6,7 @@ final class PixelSlider: NSView {
     var minValue: Double = 0.5
     var maxValue: Double = 2.0
 
-    var value: Double = 0.65 {
+    var value: Double = 0.5 {
         didSet {
             value = min(max(value, minValue), maxValue)
             needsDisplay = true
@@ -80,7 +80,7 @@ final class PixelSlider: NSView {
 
 final class AnimationSection: SettingsSection {
     private let slider = PixelSlider()
-    private let resetButton = ClosureButton("STANDARD 0,65X", style: .ghost) {}
+    private let resetButton = ClosureButton("STANDARD 0,50X", style: .ghost) {}
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -123,7 +123,7 @@ final class AnimationSection: SettingsSection {
 
         drawText("LANGSAM", x: 0, y: 140, width: 90, font: 8, color: Theme.textFaint)
         drawText("SCHNELL", x: bounds.width - 90, y: 140, width: 90, font: 8, color: Theme.textFaint, align: .right)
-        drawText("0,5X", x: 92, y: 140, width: 50, font: 8, color: Theme.textFaint)
+        drawText("0,25X", x: 92, y: 140, width: 50, font: 8, color: Theme.textFaint)
         drawText("2,0X", x: bounds.width - 142, y: 140, width: 50, font: 8, color: Theme.textFaint, align: .right)
 
         PixelDraw.hLine(x: 0, y: 176, width: bounds.width, color: Theme.line)
@@ -153,7 +153,7 @@ final class AnimationSection: SettingsSection {
             color: Theme.textFaint
         )
 
-        drawText("0,65X IST DER STANDARD.", x: 194, y: 284, width: bounds.width - 194, font: 8, color: Theme.textFaint)
+        drawText("0,50X IST DER STANDARD.", x: 194, y: 284, width: bounds.width - 194, font: 8, color: Theme.textFaint)
     }
 
     override func reload() {

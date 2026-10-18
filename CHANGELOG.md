@@ -5,7 +5,7 @@
 - Center the empty-query “TYPE TO SEARCH” placeholder vertically.
 - Pixel reveal: fixed-size pixels pop in without a cross-fade. The launcher opens outward from the search bar, results appear in a truly random pixel order, and closing removes pixels from the outside in.
 - Pixel animation is GPU-composited, pre-warmed, and does not touch the search path.
-- Settings → Animation: speed slider from 0,5× to 2,0×, default 0,65× (deliberately slower than the previous timing).
+- Settings → Animation: speed slider from 0,25× to 2,0×, default 0,50× (deliberately slower than the previous timing).
 - Async search updates now animate only the newly added result rows, never the whole list.
 
 ## 0.3.0 — 2026-10-18
