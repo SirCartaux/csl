@@ -324,6 +324,7 @@ final class FileIndex {
     func searchAsync(
         for query: String,
         progress: ((Int, Int) -> Void)? = nil,
+        batch: (([SearchResult]) -> Void)? = nil,
         completion: @escaping ([SearchResult]) -> Void
     ) {
         guard isLoaded, !entriesByPath.isEmpty, query.count >= 2 else {
@@ -347,7 +348,7 @@ final class FileIndex {
                 needle: needle,
                 ignoredFolders: ignoredFolders,
                 ignoredExtensions: ignoredExtensions,
-                limit: 16,
+                limit: Int.max,
                 isCancelled: { [weak self] in
                     guard let self else { return true }
                     self.tokenLock.lock()
@@ -359,6 +360,12 @@ final class FileIndex {
                     guard let progress else { return }
                     DispatchQueue.main.async {
                         progress(scanned, total)
+                    }
+                },
+                batch: { results in
+                    guard let batch else { return }
+                    DispatchQueue.main.async {
+                        batch(results)
                     }
                 }
             )
@@ -373,15 +380,22 @@ final class FileIndex {
         ignoredExtensions: Set<String>,
         limit: Int,
         isCancelled: () -> Bool,
-        progress: ((Int, Int) -> Void)? = nil
+        progress: ((Int, Int) -> Void)? = nil,
+        batch: (([SearchResult]) -> Void)? = nil
     ) -> [SearchResult] {
-        var matches: [(score: Int, entry: IndexedFile, range: NSRange)] = []
+        var matches: [SearchResult] = []
+        var pendingBatch: [SearchResult] = []
         let total = entries.count
+        let likelyThreshold = 750
         progress?(0, total)
 
         for (index, entry) in entries.enumerated() {
             if index % 2048 == 0 {
                 progress?(index, total)
+                if !pendingBatch.isEmpty {
+                    batch?(pendingBatch)
+                    pendingBatch.removeAll(keepingCapacity: true)
+                }
             }
             if index % 512 == 0, isCancelled() { return [] }
             if !entry.ext.isEmpty, ignoredExtensions.contains(entry.ext) { continue }
@@ -404,34 +418,45 @@ final class FileIndex {
                 score -= min(120, found.location * 2)
             }
             score -= min(70, (lower.length - found.length) * 2)
+            let likelyScore = min(score, 1000) + 20
+            // Mid-word substring hits are too noisy; include every prefix /
+            // word-boundary match, which is what counts as likely.
+            guard likelyScore >= likelyThreshold else { continue }
 
-            matches.append((min(score, 1000) + 20, entry, found))
-            if matches.count >= 4000 { break }
+            let url = URL(fileURLWithPath: entry.path)
+            let result = SearchResult(
+                id: "file:" + entry.path,
+                title: entry.name,
+                subtitle: PathDisplay.pretty(folderOf: url),
+                kind: .file,
+                icon: .file(url),
+                score: likelyScore,
+                titleMatch: [found],
+                action: .open(url)
+            )
+            matches.append(result)
+            pendingBatch.append(result)
+            if pendingBatch.count >= 128 {
+                batch?(pendingBatch)
+                pendingBatch.removeAll(keepingCapacity: true)
+            }
         }
 
+        if !pendingBatch.isEmpty {
+            batch?(pendingBatch)
+        }
         progress?(total, total)
         guard !matches.isEmpty else { return [] }
+
         matches.sort {
             if $0.score != $1.score { return $0.score > $1.score }
-            return $0.entry.name.count < $1.entry.name.count
+            return $0.title.count < $1.title.count
         }
 
         var seenPaths = Set<String>()
-        return matches
-            .filter { seenPaths.insert($0.entry.path).inserted }
-            .prefix(limit)
-            .map { match in
-                let url = URL(fileURLWithPath: match.entry.path)
-                return SearchResult(
-                    id: "file:" + match.entry.path,
-                    title: match.entry.name,
-                    subtitle: PathDisplay.pretty(folderOf: url),
-                    kind: .file,
-                    icon: .file(url),
-                    score: match.score,
-                    titleMatch: [match.range],
-                    action: .open(url)
-                )
-            }
+        return Array(matches
+            .filter { seenPaths.insert($0.id).inserted }
+            .prefix(limit))
     }
+
 }

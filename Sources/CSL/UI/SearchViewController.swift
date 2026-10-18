@@ -11,7 +11,7 @@ final class SearchViewController: NSViewController {
     let searchField = PixelTextField(frame: .zero)
 
     private let rootView = RootView()
-    private let scrollView = NSScrollView()
+    private let scrollView = ResultScrollView()
     private let tableView = ResultTableView()
     private let glowView = GlowView(frame: .zero)
     private let resizeHandle = ResizeHandleView()
@@ -29,6 +29,7 @@ final class SearchViewController: NSViewController {
     private var selectedIndex = 0
     private var resetSelectionOnNextUpdate = false
     private var userNavigated = false
+    private var userScrolledResults = false
     private var suppressClick = false
     private(set) var isDraggingResult = false
     private var contextResultID: String?
@@ -231,6 +232,12 @@ final class SearchViewController: NSViewController {
         tableView.contextMenuProvider = { [weak self] row in
             self?.makeContextMenu(for: row)
         }
+        tableView.onScroll = { [weak self] in
+            self?.userScrolledResults = true
+        }
+        scrollView.onUserScroll = { [weak self] in
+            self?.userScrolledResults = true
+        }
         tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
         tableView.setDraggingSourceOperationMask(.copy, forLocal: true)
 
@@ -267,6 +274,7 @@ final class SearchViewController: NSViewController {
         placeholderView.isHidden = false
         resetSelectionOnNextUpdate = true
         userNavigated = false
+        userScrolledResults = false
         results = []
         selectedIndex = 0
         rootView.query = ""
@@ -517,6 +525,11 @@ final class SearchViewController: NSViewController {
         let previousID: String? = self.results.indices.contains(selectedIndex)
             ? self.results[selectedIndex].id
             : nil
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        let previousTopID: String? = visibleRows.length > 0
+            && self.results.indices.contains(visibleRows.location)
+            ? self.results[visibleRows.location].id
+            : nil
         let previousIDs = Set(self.results.map(\.id))
         let resultsChanged = self.results.map(\.id) != results.map(\.id)
         if resultsChanged {
@@ -542,7 +555,17 @@ final class SearchViewController: NSViewController {
         resizeTable()
         tableView.reloadData()
         if !results.isEmpty {
-            tableView.scrollRowToVisible(selectedIndex)
+            // While results stream in, keep the user's scroll position (or the
+            // selected row when navigating) instead of jumping back to the top.
+            if userNavigated {
+                tableView.scrollRowToVisible(selectedIndex)
+            } else if userScrolledResults,
+                      let previousTopID,
+                      let topIndex = results.firstIndex(where: { $0.id == previousTopID }) {
+                tableView.scrollRowToVisible(topIndex)
+            } else {
+                tableView.scrollRowToVisible(selectedIndex)
+            }
         }
 
         rootView.query = searchField.stringValue
@@ -876,6 +899,7 @@ extension SearchViewController: NSTextFieldDelegate {
         isNavigatingResults = false
         resetSelectionOnNextUpdate = true
         userNavigated = false
+        userScrolledResults = false
         selectedIndex = 0
         rootView.query = searchField.stringValue
         engine?.search(searchField.stringValue)
@@ -1001,6 +1025,12 @@ final class ResultTableView: NSTableView {
     var onMouseDown: (() -> Void)?
     var onDoubleClick: ((Int) -> Void)?
     var contextMenuProvider: ((Int) -> NSMenu?)?
+    var onScroll: (() -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        onScroll?()
+        super.scrollWheel(with: event)
+    }
 
     override func mouseDown(with event: NSEvent) {
         onMouseDown?()
@@ -1022,6 +1052,15 @@ final class ResultTableView: NSTableView {
 }
 
 
+
+final class ResultScrollView: NSScrollView {
+    var onUserScroll: (() -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        onUserScroll?()
+        super.scrollWheel(with: event)
+    }
+}
 
 // MARK: - Quick Look data source
 

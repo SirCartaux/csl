@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Search
+- Stream every likely file hit into the result list as the index scan finds it, ranked into position immediately. The first 7 are cached only after the scan finishes.
+- A small bottom-right pixel activity ring plus a compact `SCAN 16,4K/71,2K` counter runs while the file index is being scanned.
+
 ## 0.4.1 — 2026-10-19
 
 ### Search

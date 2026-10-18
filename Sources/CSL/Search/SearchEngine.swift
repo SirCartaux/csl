@@ -23,6 +23,7 @@ final class SearchEngine {
     private var currentQuery = ""
     private var instantResults: [SearchResult] = []
     private var cachedFileResults: [SearchResult] = []
+    private var streamedFileResults: [SearchResult] = []
     private var fileResults: [SearchResult] = []
     private var fileSearching = false
     private var started: CFTimeInterval = 0
@@ -50,6 +51,7 @@ final class SearchEngine {
         currentQuery = trimmed
         fileResults = []
         cachedFileResults = []
+        streamedFileResults = []
         fileSearching = !trimmed.isEmpty
         started = CACurrentMediaTime()
         loggedFirstUpdate = false
@@ -85,6 +87,7 @@ final class SearchEngine {
         generation += 1
         fileProvider.cancel()
         cachedFileResults = []
+        streamedFileResults = []
         fileSearching = false
         onIndexProgress?(0, 0, true)
     }
@@ -111,6 +114,7 @@ final class SearchEngine {
     }
 
     private func searchIndex(for query: String, generation: Int) {
+        streamedFileResults = []
         let total = fileIndex.totalCount
         if total > 0 {
             onIndexProgress?(0, total, false)
@@ -119,33 +123,37 @@ final class SearchEngine {
         fileIndex.searchAsync(for: query, progress: { [weak self] scanned, total in
             guard let self, self.generation == generation else { return }
             self.onIndexProgress?(scanned, total, false)
+        }, batch: { [weak self] batch in
+            guard let self, self.generation == generation else { return }
+            let known = Set(self.streamedFileResults.map(\.id))
+            let fresh = batch.filter { !known.contains($0.id) }
+            guard !fresh.isEmpty else { return }
+            self.streamedFileResults.append(contentsOf: fresh)
+            // Re-rank the complete pool so each newly found hit appears at its
+            // rule-based position, not at the bottom of the list.
+            self.emit()
+            Log.debug("file stream: +\(fresh.count) (\(self.streamedFileResults.count) total, query: \"\(query)\")")
         }) { [weak self] results in
             guard let self, self.generation == generation else { return }
             self.onIndexProgress?(total, total, true)
 
-            // Replace the cached first screenful with the complete index
-            // result. If the index returned nothing the cached rows must go.
+            // Replace the cached first screenful with the complete, sorted
+            // index result.
             if !self.cachedFileResults.isEmpty {
                 let cachedIDs = Set(self.cachedFileResults.map(\.id))
                 self.instantResults.removeAll { cachedIDs.contains($0.id) }
                 self.cachedFileResults = []
-                self.emit()
             }
 
             Log.debug(String(
-                format: "index results: %d after %.1f ms (query: \"%@\")",
+                format: "index complete: %d after %.1f ms (query: \"%@\")",
                 results.count,
                 (CACurrentMediaTime() - self.started) * 1000,
                 query
             ))
-            guard !results.isEmpty else { return }
+            self.streamedFileResults = results
+            // Only the finished search is allowed to populate the cache.
             FileResultCache.shared.store(results, for: query)
-
-            let known = Set(self.instantResults.map(\.id))
-            let fresh = results.filter { !known.contains($0.id) }
-            guard !fresh.isEmpty else { return }
-            self.instantResults.append(contentsOf: fresh)
-            self.instantResults.sort(by: Self.ranking)
             self.emit()
         }
     }
@@ -168,11 +176,9 @@ final class SearchEngine {
     private func emit() {
         var seen = Set<String>()
         var merged = instantResults.filter { seen.insert($0.id).inserted }
+        merged.append(contentsOf: streamedFileResults.filter { seen.insert($0.id).inserted })
         merged.append(contentsOf: fileResults.filter { seen.insert($0.id).inserted })
         merged = ResultRanker.shared.ranked(merged, query: currentQuery)
-        if merged.count > 24 {
-            merged.removeLast(merged.count - 24)
-        }
 
         if !loggedFirstUpdate {
             loggedFirstUpdate = true
