@@ -30,6 +30,8 @@ final class SearchViewController: NSViewController {
     private var resetSelectionOnNextUpdate = false
     private var userNavigated = false
     private var userScrolledResults = false
+    private var indexWasScanning = false
+    private var pendingResultFlash = false
     private var suppressClick = false
     private(set) var isDraggingResult = false
     private var contextResultID: String?
@@ -109,12 +111,20 @@ final class SearchViewController: NSViewController {
 
         engine?.onIndexProgress = { [weak self] scanned, total, done in
             guard let self else { return }
-            if done || total <= 0 {
+            if done {
+                if self.indexWasScanning, total > 0, scanned >= total {
+                    self.pendingResultFlash = true
+                }
+                self.indexWasScanning = false
                 self.rootView.indexProgress = nil
                 self.searchActivity.stop()
-            } else {
+            } else if total > 0 {
+                self.indexWasScanning = true
                 self.rootView.indexProgress = (scanned, total)
                 self.searchActivity.start()
+            } else {
+                self.rootView.indexProgress = nil
+                self.searchActivity.stop()
             }
         }
 
@@ -275,6 +285,8 @@ final class SearchViewController: NSViewController {
         resetSelectionOnNextUpdate = true
         userNavigated = false
         userScrolledResults = false
+        indexWasScanning = false
+        pendingResultFlash = false
         results = []
         selectedIndex = 0
         rootView.query = ""
@@ -573,6 +585,11 @@ final class SearchViewController: NSViewController {
         rootView.isSearching = isSearching
         rootView.needsDisplay = true
         refreshWindowSize()
+        if pendingResultFlash {
+            pendingResultFlash = false
+            rootView.flashResultCount()
+            Log.debug("result count flash: \(results.count)")
+        }
 
         let newRows = results.indices.filter { !previousIDs.contains(results[$0].id) }
         animateNewRows(newRows)

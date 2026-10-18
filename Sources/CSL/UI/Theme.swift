@@ -32,6 +32,7 @@ enum Theme {
     static let accent = NSColor(hex: 0xFFC24B)
     static let accentDim = NSColor(hex: 0x9C7429)
     static let danger = NSColor(hex: 0xFF6B6B)
+    static let success = NSColor(hex: 0x74E08A)
 
     // Launcher metrics. `launcherScale` is driven by the resize handles;
     // everything visible in the launcher (layout, fonts, borders) multiplies

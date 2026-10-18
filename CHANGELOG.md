@@ -9,6 +9,7 @@
 
 ### Launcher
 - A small bottom-right pixel activity ring plus a compact `SCAN 16,4K/71,2K` counter runs while the file index is being scanned.
+- The ring swells in amber with a 0.7 s glow period. When the scan finishes, the result count flashes green and fades back to the normal grey.
 
 ## 0.4.1 — 2026-10-19
 

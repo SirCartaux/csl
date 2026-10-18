@@ -58,11 +58,22 @@ final class PixelActivityView: NSView {
             let pulse = CAKeyframeAnimation(keyPath: "opacity")
             pulse.values = [0.18, 1.0, 0.18]
             pulse.keyTimes = [0.0, 0.28, 1.0]
-            pulse.duration = 0.9
-            pulse.beginTime = now + Double(index) * 0.10
+            pulse.duration = 0.7
+            pulse.beginTime = now + Double(index) * 0.07
             pulse.repeatCount = .infinity
             pulse.isRemovedOnCompletion = false
             cell.add(pulse, forKey: "pixelPulse")
+
+            // One shared amber swell across the whole ring: bright, dim,
+            // bright — a soft blink with a 0.7 s period.
+            let glow = CAKeyframeAnimation(keyPath: "shadowOpacity")
+            glow.values = [0.15, 1.0, 0.15]
+            glow.keyTimes = [0.0, 0.5, 1.0]
+            glow.duration = 0.7
+            glow.beginTime = now
+            glow.repeatCount = .infinity
+            glow.isRemovedOnCompletion = false
+            cell.add(glow, forKey: "pixelGlow")
         }
     }
 
@@ -72,6 +83,7 @@ final class PixelActivityView: NSView {
         isHidden = true
         for cell in cells {
             cell.removeAllAnimations()
+            cell.shadowOpacity = 0
         }
     }
 
@@ -80,6 +92,10 @@ final class PixelActivityView: NSView {
             let cell = CALayer()
             cell.backgroundColor = Theme.accent.cgColor
             cell.opacity = 0.18
+            cell.shadowColor = Theme.accent.cgColor
+            cell.shadowOffset = .zero
+            cell.shadowRadius = Theme.ls(4.5)
+            cell.shadowOpacity = 0.15
             layer?.addSublayer(cell)
             cells.append(cell)
         }

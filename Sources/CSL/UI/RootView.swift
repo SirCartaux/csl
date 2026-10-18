@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 /// Pure geometry for the panel. The view is flipped (origin top-left), so all
 /// numbers below read like a design spec: header, field, list, footer.
@@ -89,6 +90,7 @@ final class RootView: NSView {
     var indexProgress: (scanned: Int, total: Int)? {
         didSet { needsDisplay = true }
     }
+    private var countFlashView: NSView?
     var statusOverride: String? {
         didSet { needsDisplay = true }
     }
@@ -285,6 +287,52 @@ final class RootView: NSView {
         }
     }
 
+    /// Briefly overlay the result count in green, then fade back to the
+    /// normal footer colour.
+    func flashResultCount() {
+        guard resultCount > 0, statusOverride == nil else { return }
+        countFlashView?.removeFromSuperview()
+
+        let footer = Layout.footerRect(in: bounds)
+        let activity = Layout.footerActivityRect(in: bounds)
+        let statusRight = indexProgress != nil
+            ? activity.minX - Theme.ls(8)
+            : footer.maxX - Theme.ls(18)
+        let rect = CGRect(
+            x: statusRight - Theme.ls(202),
+            y: footer.minY + Theme.ls(8),
+            width: Theme.ls(202),
+            height: Theme.ls(12)
+        )
+
+        let flash = FooterFlashView(frame: rect, text: "\(resultCount) RESULTS")
+        flash.wantsLayer = true
+        flash.layer?.shadowColor = Theme.success.cgColor
+        flash.layer?.shadowOpacity = 0.9
+        flash.layer?.shadowRadius = Theme.ls(5)
+        flash.layer?.shadowOffset = .zero
+        addSubview(flash)
+        countFlashView = flash
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.duration = 0.65
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        fade.fillMode = .both
+        fade.isRemovedOnCompletion = false
+        flash.layer?.add(fade, forKey: "countFlash")
+        flash.layer?.opacity = 0
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self, weak flash] in
+            guard let flash else { return }
+            if self?.countFlashView === flash {
+                self?.countFlashView = nil
+            }
+            flash.removeFromSuperview()
+        }
+    }
+
     private func drawStatus(_ text: String, in rect: CGRect, color: NSColor) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .right
@@ -327,5 +375,39 @@ final class RootView: NSView {
             withAttributes: labelAttributes
         )
         return capRect.maxX + Theme.ls(6) + labelSize.width + Theme.ls(16)
+    }
+}
+
+
+private final class FooterFlashView: NSView {
+    private let text: String
+
+    init(frame: NSRect, text: String) {
+        self.text = text
+        super.init(frame: frame)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isFlipped: Bool { true }
+    override var isOpaque: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .right
+        (text as NSString).draw(
+            in: bounds,
+            withAttributes: [
+                .font: Theme.launcherDisplay(8.5),
+                .foregroundColor: Theme.success,
+                .paragraphStyle: paragraph
+            ]
+        )
     }
 }
