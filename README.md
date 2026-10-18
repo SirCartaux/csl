@@ -79,8 +79,8 @@ window, field editor and focus is more direct in AppKit.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.3.0.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.3.0.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.4.0.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.4.0.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
@@ -143,6 +143,7 @@ when clicked.
 | Right-click a result | Open, Show in Finder, Copy Path/URL |
 | Drag a result out | Drag files/apps/URLs into Finder or other apps (copy) |
 | **Drag the glowing panel edge/corner** | **Scale the whole launcher; the panel stays centered** |
+| `⌘,` | Open Settings while the launcher is open |
 | Click outside | Close |
 
 Changing the query (letter, Backspace, paste) switches `Space` back to a literal

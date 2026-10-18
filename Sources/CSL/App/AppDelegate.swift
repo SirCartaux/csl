@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var selftestStarted: CFTimeInterval = 0
     private var didLogSelftestFirstUpdate = false
     private var isClosing = false
+    private var settingsShortcutMonitor: Any?
 
     // MARK: - Lifecycle
 
@@ -43,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         buildPanel()
         buildStatusItem()
         installHotkey()
+        installSettingsShortcut()
 
         engine.delegate = self
         engine.warmUp()
@@ -116,6 +118,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let settingsShortcutMonitor {
+            NSEvent.removeMonitor(settingsShortcutMonitor)
+        }
         FileWatcher.shared.stopAll()
         FileIndex.shared.flush()
         ResultRanker.shared.flush()
@@ -195,6 +200,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return .folders
         }
         return tab
+    }
+
+    private func installSettingsShortcut() {
+        guard settingsShortcutMonitor == nil else { return }
+        settingsShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags.contains(.command),
+                  event.keyCode == 43, // comma
+                  self.panel.isVisible else { return event }
+            self.hidePanel(restoreFocus: false)
+            self.showSettings()
+            return nil
+        }
     }
 
     private func installHotkey() {
@@ -386,7 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.removeAllItems()
 
         menu.addItem(makeItem(title: "OPEN CSL", action: #selector(showFromMenu), key: ""))
-        menu.addItem(makeItem(title: "EINSTELLUNGEN…", action: #selector(openSettingsFromMenu), key: ""))
+        menu.addItem(makeItem(title: "EINSTELLUNGEN…", action: #selector(openSettingsFromMenu), key: ","))
 
         let bindings = hotkeyManager?.activeBindings.joined(separator: "  /  ") ?? "–"
         let info = makeItem(title: "HOTKEY  \(bindings)", action: nil, key: "")

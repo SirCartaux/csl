@@ -1,14 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-10-19
 
+### Launcher
 - Center the empty-query “TYPE TO SEARCH” placeholder vertically.
-- Pixel reveal: fixed-size pixels pop in without a cross-fade. The launcher opens outward from the search bar and closes from the outside in.
-- Pixel animation is GPU-composited, pre-warmed, and does not touch the search path.
-- Settings → Animation: speed slider from 0,25× to 2,0×, default 1,00×; the previous timing is now 1,00×.
-- Async search updates now animate only the newly added result rows, never the whole list.
-- New result rows get a small amber glow that fades out quickly; only the newly added visible rows glow, existing rows stay untouched.
-- The glow has settings for on/off, intensity (default 0,55) and fade time (default 0,30 s).
+- Fixed-size pixel reveal without a cross-fade: opening spreads from the search bar, closing removes pixels from the outside in.
+- Animation speed slider from 0,25× to 2,0× (default 1,00×), applied to the open/close reveal.
+- `⌘,` opens Settings while the launcher is open; the menu bar item also shows the shortcut.
+
+### Search
+- New result rows get a small amber glow that fades out quickly; only newly added visible rows glow, existing rows stay untouched.
+- Glow settings: on/off, intensity (default 0,55) and fade time (default 0,30 s).
+
+### Docs
+- Repository documentation is English-only (GitHub has no per-language README routing).
 
 ## 0.3.0 — 2026-10-18
 
