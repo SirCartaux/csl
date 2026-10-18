@@ -33,6 +33,7 @@ final class SearchViewController: NSViewController {
     private var userScrolledResults = false
     private var indexWasScanning = false
     private var pendingResultFlash = false
+    private var calculatorCopyText: String?
     private var suppressClick = false
     private(set) var isDraggingResult = false
     private var contextResultID: String?
@@ -115,6 +116,9 @@ final class SearchViewController: NSViewController {
         calculatorHint.layer?.shadowRadius = Theme.ls(4)
         calculatorHint.layer?.shadowOffset = .zero
         calculatorHint.isHidden = true
+        calculatorHint.onCopy = { [weak self] in
+            self?.copyCalculatorResult()
+        }
         rootView.addSubview(calculatorHint)
 
         engine?.onIndexProgress = { [weak self] scanned, total, done in
@@ -297,6 +301,7 @@ final class SearchViewController: NSViewController {
         indexWasScanning = false
         pendingResultFlash = false
         calculatorHint.isHidden = true
+        calculatorCopyText = nil
         rootView.calculatorActive = false
         results = []
         selectedIndex = 0
@@ -880,6 +885,20 @@ final class SearchViewController: NSViewController {
         flashStatus("COPIED URL")
     }
 
+    // MARK: - Calculator copy
+
+    @discardableResult
+    private func copyCalculatorResult() -> Bool {
+        guard rootView.calculatorActive, let text = calculatorCopyText else {
+            return false
+        }
+        copyToPasteboard(text)
+        flashStatus("COPIED \(text)")
+        calculatorHint.flashCopied()
+        Log.debug("calculator copied: \(text)")
+        return true
+    }
+
     // MARK: - Status
 
     func flashStatus(_ text: String) {
@@ -922,7 +941,10 @@ extension SearchViewController: NSTextFieldDelegate {
     private func updateCalculatorHint() {
         guard let calculation = Calculator.evaluate(searchField.stringValue),
               !searchField.stringValue.isEmpty else {
-            calculatorHint.isHidden = true
+            calculatorCopyText = nil
+            if !calculatorHint.isHidden {
+                calculatorHint.isHidden = true
+            }
             if rootView.calculatorActive {
                 rootView.calculatorActive = false
                 rootView.needsDisplay = true
@@ -940,7 +962,10 @@ extension SearchViewController: NSTextFieldDelegate {
         let maxX = field.maxX - Theme.ls(4)
 
         guard x + badge.width <= maxX else {
-            calculatorHint.isHidden = true
+            calculatorCopyText = nil
+            if !calculatorHint.isHidden {
+                calculatorHint.isHidden = true
+            }
             if rootView.calculatorActive {
                 rootView.calculatorActive = false
                 rootView.needsDisplay = true
@@ -948,14 +973,22 @@ extension SearchViewController: NSTextFieldDelegate {
             return
         }
 
-        calculatorHint.resultText = calculation.display
-        calculatorHint.frame = CGRect(
+        calculatorCopyText = calculation.display
+        if calculatorHint.resultText != calculation.display {
+            calculatorHint.resultText = calculation.display
+        }
+        let frame = CGRect(
             x: floor(x),
             y: floor(field.midY - badge.height / 2),
             width: badge.width,
             height: badge.height
         )
-        calculatorHint.isHidden = false
+        if calculatorHint.frame != frame {
+            calculatorHint.frame = frame
+        }
+        if calculatorHint.isHidden {
+            calculatorHint.isHidden = false
+        }
         if !rootView.calculatorActive {
             rootView.calculatorActive = true
             rootView.needsDisplay = true
@@ -987,6 +1020,9 @@ extension SearchViewController: NSTextFieldDelegate {
             moveSelection(by: -1)
             return true
         case #selector(NSResponder.insertNewline(_:)):
+            if copyCalculatorResult() {
+                return true
+            }
             chooseSelected(reveal: NSEvent.modifierFlags.contains(.command))
             return true
         case #selector(NSResponder.cancelOperation(_:)):

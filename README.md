@@ -62,7 +62,7 @@ window, field editor and focus is more direct in AppKit.
 - **First-screen result cache:** up to 7 file hits per query are kept in a 30 MB in-memory LRU, so a repeated search paints its first screenful immediately; only a finished scan is allowed to fill the cache.
 - **Streaming ranked file results:** every likely file hit is added as the index scan finds it, at the position the ranking rules assign — not silently capped at the first 16.
 - **Search activity:** a small pixel ring pulses and glows amber in the bottom-right while the folder index is being scanned, next to a compact `SCAN 16,4K/71,2K` counter. The result count flashes green when the scan completes.
-- **Inline calculator:** type arithmetic or functions straight into the field — `2+2`, `(12,5*4)^2`, `sqrt(2)`, `sin(pi/2)`, `50%`, `5!` — and a pixel-bordered `= 4` result appears immediately after the query, without opening anything.
+- **Inline calculator:** type arithmetic or functions straight into the field — `2+2`, `(12,5*4)^2`, `sqrt(2)`, `sin(pi/2)`, `50%`, `5!` — and a pixel-bordered `= 4` result appears immediately after the query. Click the badge or press `Enter` to copy the result.
 - **Resizable and scalable:** drag the glowing panel edge or any corner. Every row, font, icon, border and the glow scales with it. The panel stays centered and remembers its scale.
 - **Fast sources:** apps, websites and commands are instantaneous; indexed folders answer in milliseconds; Spotlight files stream in (prefix ~30–100 ms, substring ~300 ms).
 - **Quick Look:** press `Space` on a file result after mouse selection, `Tab` or arrows. `Space`/`Esc` closes it; typing jumps back into the query.
