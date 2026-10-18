@@ -314,13 +314,18 @@ final class FileIndex {
             ignoredFolders: settings.ignoredFolders,
             ignoredExtensions: Set(settings.ignoredExtensions),
             limit: limit,
-            isCancelled: { false }
+            isCancelled: { false },
+            progress: nil
         )
     }
 
     /// Runs the substring scan off the main thread. The array snapshot is
     /// captured on the main thread, so later commits cannot mutate it.
-    func searchAsync(for query: String, completion: @escaping ([SearchResult]) -> Void) {
+    func searchAsync(
+        for query: String,
+        progress: ((Int, Int) -> Void)? = nil,
+        completion: @escaping ([SearchResult]) -> Void
+    ) {
         guard isLoaded, !entriesByPath.isEmpty, query.count >= 2 else {
             completion([])
             return
@@ -349,6 +354,12 @@ final class FileIndex {
                     let current = self.searchToken
                     self.tokenLock.unlock()
                     return current != token
+                },
+                progress: { scanned, total in
+                    guard let progress else { return }
+                    DispatchQueue.main.async {
+                        progress(scanned, total)
+                    }
                 }
             )
             DispatchQueue.main.async { completion(matches) }
@@ -361,11 +372,17 @@ final class FileIndex {
         ignoredFolders: [String],
         ignoredExtensions: Set<String>,
         limit: Int,
-        isCancelled: () -> Bool
+        isCancelled: () -> Bool,
+        progress: ((Int, Int) -> Void)? = nil
     ) -> [SearchResult] {
         var matches: [(score: Int, entry: IndexedFile, range: NSRange)] = []
+        let total = entries.count
+        progress?(0, total)
 
         for (index, entry) in entries.enumerated() {
+            if index % 2048 == 0 {
+                progress?(index, total)
+            }
             if index % 512 == 0, isCancelled() { return [] }
             if !entry.ext.isEmpty, ignoredExtensions.contains(entry.ext) { continue }
             if !ignoredFolders.isEmpty, SettingsStore.path(entry.path, isInsideAny: ignoredFolders) { continue }
@@ -392,6 +409,7 @@ final class FileIndex {
             if matches.count >= 4000 { break }
         }
 
+        progress?(total, total)
         guard !matches.isEmpty else { return [] }
         matches.sort {
             if $0.score != $1.score { return $0.score > $1.score }

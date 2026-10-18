@@ -19,6 +19,18 @@ enum CSLFormat {
         countFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
+    static func compact(_ value: Int) -> String {
+        if value >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000)
+                .replacingOccurrences(of: ".", with: ",")
+        }
+        if value >= 1_000 {
+            return String(format: "%.1fK", Double(value) / 1_000)
+                .replacingOccurrences(of: ".", with: ",")
+        }
+        return "\(value)"
+    }
+
     static func eta(_ seconds: TimeInterval?) -> String {
         guard let seconds, seconds.isFinite, seconds >= 0 else { return "-" }
         if seconds < 1 { return "<1 S" }

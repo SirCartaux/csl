@@ -10,6 +10,7 @@ protocol SearchEngineDelegate: AnyObject {
 /// returns, so the UI paints something on the same tick as the keystroke.
 final class SearchEngine {
     weak var delegate: SearchEngineDelegate?
+    var onIndexProgress: ((Int, Int, Bool) -> Void)?
 
     private let appProvider = AppProvider()
     private let commandProvider = CommandProvider()
@@ -44,6 +45,7 @@ final class SearchEngine {
         generation += 1
         let generation = self.generation
         fileProvider.cancel()
+        onIndexProgress?(0, 0, true)
 
         currentQuery = trimmed
         fileResults = []
@@ -84,6 +86,7 @@ final class SearchEngine {
         fileProvider.cancel()
         cachedFileResults = []
         fileSearching = false
+        onIndexProgress?(0, 0, true)
     }
 
     private func refreshInstantResults() {
@@ -108,8 +111,17 @@ final class SearchEngine {
     }
 
     private func searchIndex(for query: String, generation: Int) {
-        fileIndex.searchAsync(for: query) { [weak self] results in
+        let total = fileIndex.totalCount
+        if total > 0 {
+            onIndexProgress?(0, total, false)
+        }
+
+        fileIndex.searchAsync(for: query, progress: { [weak self] scanned, total in
             guard let self, self.generation == generation else { return }
+            self.onIndexProgress?(scanned, total, false)
+        }) { [weak self] results in
+            guard let self, self.generation == generation else { return }
+            self.onIndexProgress?(total, total, true)
 
             // Replace the cached first screenful with the complete index
             // result. If the index returned nothing the cached rows must go.

@@ -32,6 +32,29 @@ enum Layout {
         )
     }
 
+    static func footerActivityRect(in bounds: CGRect) -> CGRect {
+        let footer = footerRect(in: bounds)
+        let size = Theme.ls(18)
+        return CGRect(
+            x: footer.maxX - Theme.ls(18) - size,
+            y: footer.midY - size / 2,
+            width: size,
+            height: size
+        )
+    }
+
+    static func footerProgressRect(in bounds: CGRect) -> CGRect {
+        let footer = footerRect(in: bounds)
+        let activity = footerActivityRect(in: bounds)
+        let width = Theme.ls(150)
+        return CGRect(
+            x: activity.minX - Theme.ls(8) - width,
+            y: footer.minY + Theme.ls(8),
+            width: width,
+            height: Theme.ls(12)
+        )
+    }
+
     static func listRect(in bounds: CGRect) -> CGRect {
         let field = fieldRect(in: bounds)
         let footer = footerRect(in: bounds)
@@ -63,6 +86,9 @@ final class RootView: NSView {
     var query: String = ""
     var resultCount: Int = 0
     var isSearching: Bool = false
+    var indexProgress: (scanned: Int, total: Int)? {
+        didSet { needsDisplay = true }
+    }
     var statusOverride: String? {
         didSet { needsDisplay = true }
     }
@@ -170,7 +196,7 @@ final class RootView: NSView {
         let rect = Layout.listRect(in: bounds)
         guard resultCount == 0 else { return }
 
-        if isSearching {
+        if isSearching || indexProgress != nil {
             drawCentered(
                 "SEARCHING",
                 font: Theme.launcherDisplay(11),
@@ -229,27 +255,44 @@ final class RootView: NSView {
         cursor = drawHint(key: "CMD+ENTER", label: "REVEAL", at: cursor, centerY: rect.midY)
         _ = drawHint(key: "ESC", label: "CLOSE", at: cursor, centerY: rect.midY)
 
-        let status: String
-        if let statusOverride {
-            status = statusOverride
-        } else if isSearching && resultCount == 0 {
-            status = "SEARCHING"
-        } else if resultCount > 0 {
-            status = "\(resultCount) RESULTS"
-        } else {
-            status = ""
-        }
-        guard !status.isEmpty else { return }
+        let activity = Layout.footerActivityRect(in: bounds)
+        let statusRight = indexProgress != nil
+            ? activity.minX - Theme.ls(8)
+            : rect.maxX - Theme.ls(18)
+        let statusRect = CGRect(
+            x: statusRight - Theme.ls(202),
+            y: rect.minY + Theme.ls(8),
+            width: Theme.ls(202),
+            height: Theme.ls(12)
+        )
 
+        if let statusOverride {
+            drawStatus(statusOverride, in: statusRect, color: Theme.accent)
+        } else if let progress = indexProgress, progress.total > 0 {
+            let progressText = "SCAN \(CSLFormat.compact(progress.scanned))/\(CSLFormat.compact(progress.total))"
+            drawStatus(progressText, in: Layout.footerProgressRect(in: bounds), color: Theme.accentDim)
+        } else {
+            let status: String
+            if isSearching && resultCount == 0 {
+                status = "SEARCHING"
+            } else if resultCount > 0 {
+                status = "\(resultCount) RESULTS"
+            } else {
+                status = ""
+            }
+            guard !status.isEmpty else { return }
+            drawStatus(status, in: statusRect, color: isSearching ? Theme.accentDim : Theme.textFaint)
+        }
+    }
+
+    private func drawStatus(_ text: String, in rect: CGRect, color: NSColor) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .right
-        (status as NSString).draw(
-            in: CGRect(x: rect.maxX - Theme.ls(220), y: rect.minY + Theme.ls(8), width: Theme.ls(202), height: Theme.ls(12)),
+        (text as NSString).draw(
+            in: rect,
             withAttributes: [
                 .font: Theme.launcherDisplay(8.5),
-                .foregroundColor: statusOverride != nil
-                    ? Theme.accent
-                    : (isSearching ? Theme.accentDim : Theme.textFaint),
+                .foregroundColor: color,
                 .paragraphStyle: paragraph
             ]
         )

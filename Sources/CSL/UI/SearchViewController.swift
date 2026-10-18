@@ -16,6 +16,7 @@ final class SearchViewController: NSViewController {
     private let glowView = GlowView(frame: .zero)
     private let resizeHandle = ResizeHandleView()
     private let placeholderView = SearchPlaceholderView()
+    private let searchActivity = PixelActivityView()
     private let rootReveal = PixelRevealGrid()
     private var pixelOpenWork: DispatchWorkItem?
     private var pixelCloseWork: DispatchWorkItem?
@@ -103,6 +104,18 @@ final class SearchViewController: NSViewController {
             self?.focus()
         }
         rootView.addSubview(resizeHandle, positioned: .above, relativeTo: glowView)
+        rootView.addSubview(searchActivity)
+
+        engine?.onIndexProgress = { [weak self] scanned, total, done in
+            guard let self else { return }
+            if done || total <= 0 {
+                self.rootView.indexProgress = nil
+                self.searchActivity.stop()
+            } else {
+                self.rootView.indexProgress = (scanned, total)
+                self.searchActivity.start()
+            }
+        }
 
         searchField.applyLauncherScale()
         rootView.wantsLayer = true
@@ -133,6 +146,7 @@ final class SearchViewController: NSViewController {
             height: Theme.ls(30)
         )
         placeholderView.frame = searchField.frame
+        searchActivity.frame = Layout.footerActivityRect(in: bounds)
 
         if let column = tableView.tableColumns.first {
             column.width = listRect.width
@@ -243,6 +257,8 @@ final class SearchViewController: NSViewController {
     func prepareForPresentation() {
         cancelPixelAnimations()
         clearStatus()
+        rootView.indexProgress = nil
+        searchActivity.stop()
         isNavigatingResults = false
         if previewIsOpen {
             closeQuickLook(restoreFocus: false)
