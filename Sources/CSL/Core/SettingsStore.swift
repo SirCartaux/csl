@@ -27,6 +27,7 @@ struct CSLSettings: Codable {
     var websites: [WebsiteEntry] = []
     var launcherScale: Double? = nil
     var pixelAnimationSpeed: Double? = nil
+    var pixelAnimationSpeedV2: Double? = nil
 }
 
 /// Single source of truth for user preferences. Persisted as JSON in
@@ -34,9 +35,11 @@ struct CSLSettings: Codable {
 final class SettingsStore {
     static let shared = SettingsStore()
 
-    static let defaultPixelAnimationSpeed: Double = 0.5
-    static let minPixelAnimationSpeed: Double = 0.1
+    static let defaultPixelAnimationSpeed: Double = 1.0
+    static let minPixelAnimationSpeed: Double = 0.25
     static let maxPixelAnimationSpeed: Double = 2.0
+    /// The 1.0 speed keeps the timing the app had when the slider read 0.5.
+    static let pixelAnimationBaseScale: Double = 2.55
 
     private(set) var settings: CSLSettings
     private var ignoredExtensionSet: Set<String> = []
@@ -88,14 +91,14 @@ final class SettingsStore {
     /// Animation speed multiplies the visual timing (1.0 = old speed,
     /// lower = slower). Persisting it never refreshes the search engine.
     var pixelAnimationSpeed: Double {
-        let value = settings.pixelAnimationSpeed ?? Self.defaultPixelAnimationSpeed
+        let value = settings.pixelAnimationSpeedV2 ?? Self.defaultPixelAnimationSpeed
         return min(max(value, Self.minPixelAnimationSpeed), Self.maxPixelAnimationSpeed)
     }
 
     func setPixelAnimationSpeed(_ value: Double) {
         let clamped = min(max(value, Self.minPixelAnimationSpeed), Self.maxPixelAnimationSpeed)
         guard abs(pixelAnimationSpeed - clamped) > 0.0001 else { return }
-        settings.pixelAnimationSpeed = clamped
+        settings.pixelAnimationSpeedV2 = clamped
         save(notify: false)
     }
 

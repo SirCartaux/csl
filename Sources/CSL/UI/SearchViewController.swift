@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import QuickLookUI
 
 final class SearchViewController: NSViewController {
@@ -21,8 +22,8 @@ final class SearchViewController: NSViewController {
     private var pixelCloseWork: DispatchWorkItem?
     private var pixelRevealActive = false
     private var pixelClosing = false
-    private var rowReveals: [(grid: PixelRevealGrid, layer: CALayer)] = []
-    private var rowRevealWork: DispatchWorkItem?
+    private var resultReveals: [(overlay: NSView, row: CALayer)] = []
+    private var resultRevealWork: DispatchWorkItem?
 
     private var results: [SearchResult] = []
     private var selectedIndex = 0
@@ -40,6 +41,8 @@ final class SearchViewController: NSViewController {
 
     var isPreviewing: Bool { previewIsOpen }
 
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+
     var animationsEnabled: Bool {
         ProcessInfo.processInfo.environment["CSL_NO_PIXEL_ANIMATION"] != "1"
     }
@@ -48,12 +51,12 @@ final class SearchViewController: NSViewController {
         max(6, 10 * Theme.launcherScale)
     }
 
-    private var rowPixelCellSize: CGFloat {
-        max(6, 10 * Theme.launcherScale)
-    }
-
     /// 1.0 is the old timing; lower settings are slower (longer delays).
     private var pixelTimeScale: Double {
+        SettingsStore.pixelAnimationBaseScale / SettingsStore.shared.pixelAnimationSpeed
+    }
+
+    private var smoothTimeScale: Double {
         1.0 / SettingsStore.shared.pixelAnimationSpeed
     }
 
@@ -365,7 +368,7 @@ final class SearchViewController: NSViewController {
         pixelOpenWork = nil
         pixelCloseWork?.cancel()
         pixelCloseWork = nil
-        cancelRowReveals()
+        cancelResultReveals()
         if let layer = rootView.layer {
             rootReveal.clear(from: layer)
         }
@@ -373,8 +376,8 @@ final class SearchViewController: NSViewController {
         pixelClosing = false
     }
 
-    /// Only newly added result rows get the pixel reveal. Rows that were
-    /// already on screen stay untouched when async results arrive later.
+    /// New rows slide in from the left with a Gaussian-blurred snapshot that
+    /// resolves into the sharp row. Only visible new rows are animated.
     private func animateNewRows(_ indices: [Int]) {
         guard animationsEnabled,
               view.window?.isVisible == true,
@@ -382,7 +385,7 @@ final class SearchViewController: NSViewController {
               !pixelClosing,
               !indices.isEmpty else { return }
 
-        cancelRowReveals()
+        cancelResultReveals()
         tableView.layoutSubtreeIfNeeded()
 
         let visible = tableView.rows(in: tableView.visibleRect)
@@ -392,54 +395,104 @@ final class SearchViewController: NSViewController {
         }
         guard !visibleIndices.isEmpty else { return }
 
-        var newReveals: [(grid: PixelRevealGrid, layer: CALayer)] = []
-        var maxTotal: TimeInterval = 0
+        tableView.wantsLayer = true
+        let scale = smoothTimeScale
+        let slide = 0.22 * scale
+        let fade = 0.10 * scale
+        let total = slide + fade
+        let slideFraction = slide / total
+        let offset = 22 * Theme.launcherScale
+
+        var reveals: [(overlay: NSView, row: CALayer)] = []
         for index in visibleIndices {
             guard let rowView = tableView.rowView(atRow: index, makeIfNecessary: true) else { continue }
+            rowView.layoutSubtreeIfNeeded()
             rowView.wantsLayer = true
-            guard let layer = rowView.layer,
+            guard let rowLayer = rowView.layer,
                   rowView.bounds.width > 1,
                   rowView.bounds.height > 1 else { continue }
 
-            let grid = PixelRevealGrid()
-            grid.prepare(
-                on: layer,
-                size: rowView.bounds.size,
-                cellSize: rowPixelCellSize,
-                style: .random,
-                visible: false
-            )
-            let total = grid.animateOpen(
-                on: layer,
-                spread: 0.08 * pixelTimeScale,
-                jitter: 0,
-                duration: 0.001 * pixelTimeScale
-            )
-            maxTotal = max(maxTotal, total)
-            newReveals.append((grid, layer))
+            guard let rep = rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds) else { continue }
+            rowView.cacheDisplay(in: rowView.bounds, to: rep)
+            guard let cgImage = rep.cgImage,
+                  let blurred = blurredImage(cgImage, radius: 6 * Theme.launcherScale) else { continue }
+            let image = NSImage(cgImage: blurred, size: rowView.bounds.size)
+
+            let overlay = ResultBlurOverlayView(image: image)
+            overlay.frame = rowView.frame
+            overlay.wantsLayer = true
+            overlay.layer?.opacity = 0
+            overlay.layer?.transform = CATransform3DMakeTranslation(-offset, 0, 0)
+            tableView.addSubview(overlay)
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            rowLayer.opacity = 1
+            CATransaction.commit()
+            rowLayer.removeAnimation(forKey: "resultRowFade")
+
+            let slideAnimation = CABasicAnimation(keyPath: "transform.translation.x")
+            slideAnimation.fromValue = -offset
+            slideAnimation.toValue = 0
+            slideAnimation.duration = total
+            slideAnimation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            slideAnimation.fillMode = .both
+            slideAnimation.isRemovedOnCompletion = true
+            overlay.layer?.add(slideAnimation, forKey: "resultSlide")
+
+            let overlayFade = CAKeyframeAnimation(keyPath: "opacity")
+            overlayFade.values = [0.0, 1.0, 1.0, 0.0]
+            overlayFade.keyTimes = [0.0, slideFraction, slideFraction, 1.0].map { NSNumber(value: $0) }
+            overlayFade.duration = total
+            overlayFade.fillMode = .both
+            overlayFade.isRemovedOnCompletion = true
+            overlay.layer?.opacity = 0
+            overlay.layer?.add(overlayFade, forKey: "resultOverlayFade")
+
+            let rowFade = CAKeyframeAnimation(keyPath: "opacity")
+            rowFade.values = [0.0, 0.0, 1.0]
+            rowFade.keyTimes = [0.0, slideFraction, 1.0].map { NSNumber(value: $0) }
+            rowFade.duration = total
+            rowFade.fillMode = .both
+            rowFade.isRemovedOnCompletion = true
+            rowLayer.add(rowFade, forKey: "resultRowFade")
+
+            reveals.append((overlay, rowLayer))
         }
 
-        guard !newReveals.isEmpty else { return }
-        rowReveals = newReveals
+        guard !reveals.isEmpty else { return }
+        resultReveals = reveals
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            for (grid, layer) in self.rowReveals {
-                grid.clear(from: layer)
-            }
-            self.rowReveals.removeAll()
-            self.rowRevealWork = nil
+            self.cancelResultReveals()
         }
-        rowRevealWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + maxTotal, execute: work)
+        resultRevealWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + total + 0.01, execute: work)
     }
 
-    private func cancelRowReveals() {
-        rowRevealWork?.cancel()
-        rowRevealWork = nil
-        for (grid, layer) in rowReveals {
-            grid.clear(from: layer)
+    private func cancelResultReveals() {
+        resultRevealWork?.cancel()
+        resultRevealWork = nil
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (overlay, row) in resultReveals {
+            overlay.removeFromSuperview()
+            row.opacity = 1
+            row.removeAnimation(forKey: "resultRowFade")
         }
-        rowReveals.removeAll()
+        CATransaction.commit()
+        resultReveals.removeAll()
+    }
+
+    private func blurredImage(_ cgImage: CGImage, radius: CGFloat) -> CGImage? {
+        let input = CIImage(cgImage: cgImage)
+        let clamped = input.clampedToExtent()
+        guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
+        filter.setValue(clamped, forKey: kCIInputImageKey)
+        filter.setValue(radius, forKey: kCIInputRadiusKey)
+        guard let output = filter.outputImage else { return nil }
+        let cropped = output.cropped(to: input.extent)
+        return Self.ciContext.createCGImage(cropped, from: cropped.extent)
     }
 
     func stopGlow() {
@@ -510,7 +563,7 @@ final class SearchViewController: NSViewController {
         let previousIDs = Set(self.results.map(\.id))
         let resultsChanged = self.results.map(\.id) != results.map(\.id)
         if resultsChanged {
-            cancelRowReveals()
+            cancelResultReveals()
         }
 
         self.results = results
@@ -1033,5 +1086,36 @@ extension SearchViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegate
         previewIsOpen = false
         previewURL = nil
         restoreLauncherFocus()
+    }
+}
+
+/// Blurred snapshot used for the smooth slide-in of new result rows.
+private final class ResultBlurOverlayView: NSView {
+    private let image: NSImage
+
+    init(image: NSImage) {
+        self.image = image
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        image.draw(
+            in: bounds,
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
     }
 }

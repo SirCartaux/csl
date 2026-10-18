@@ -68,7 +68,7 @@ window, field editor and focus is more direct in AppKit.
 - **Real settings window** (search `CSL SETTINGS`, or use the menu bar): index folders with progress, percentage and ETA; ignore folders and extensions; add websites with automatically fetched favicons.
 - **Menu bar item:** open, settings, launch at login, keyboard shortcuts, quit.
 - **Pixel UI:** Silkscreen, hard edges, notched corners, hard shadows and an animated amber glow at 0% idle CPU.
-- **Pixel reveal:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar, results appear in a random pixel order, and closing removes pixels from the outside in. New async results animate only their new rows. GPU-composited, pre-warmed, zero cost to the search path; speed is adjustable in **Settings → Animation** (0,1×–2,0×, default 0,50×).
+- **Reveal animation:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar and closing removes pixels from the outside in. New result rows slide in smoothly from the side with a Gaussian-blurred snapshot that crossfades into the sharp row. GPU-composited, pre-warmed, zero cost to the search path; speed is adjustable in **Settings → Animation** (0,25×–2,0×, default 1,00×).
 - **German and English search keywords** (`papierkorb`, `einstellungen`, `settings`, …).
 
 ---
@@ -207,9 +207,10 @@ run; default exclusions below.
 
 ### Animation
 
-A pixel slider from **0,1× (very slow)** to **2,0× (fast)**, default **0,50×**.
-It changes the timing of the open/close wave and the new-row reveal without
-touching search performance. The pixels still jump hard from 0 to 100 %.
+A speed slider from **0,25× (slow)** to **2,0× (fast)**, default **1,00×**.
+It changes the open/close pixel wave and the smooth new-row slide without
+touching search performance. The launcher pixels still jump hard from 0 to 100 %;
+result rows get the Gaussian-blur slide instead of a pixel reveal.
 
 ### General
 
