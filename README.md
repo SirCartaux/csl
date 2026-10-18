@@ -69,7 +69,7 @@ window, field editor and focus is more direct in AppKit.
 - **Menu bar item:** open, settings, launch at login, keyboard shortcuts, quit.
 - **Pixel UI:** Silkscreen, hard edges, notched corners, hard shadows and an animated amber glow at 0% idle CPU.
 - **Reveal effect:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar and closing removes pixels from the outside in. New result rows get a small amber glow that fades out quickly. GPU-composited, pre-warmed, zero cost to the search path; open/close speed is adjustable in **Settings → Animation** (0,25×–2,0×, default 1,00×).
-- **German and English search keywords** (`papierkorb`, `einstellungen`, `settings`, …).
+- **German and English search keywords** (`papierkorb`, `einstellungen`, `settings`, …), including localized app names such as `Festplattendienstprogramm` → **Disk Utility**.
 
 ---
 

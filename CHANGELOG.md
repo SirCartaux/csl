@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Match localized app names (for example “Festplattendienstprogramm”) while keeping the canonical English app title in results.
+
 ## 0.4.0 — 2026-10-19
 
 ### Launcher
