@@ -2,16 +2,15 @@ import AppKit
 import QuartzCore
 
 enum PixelRevealStyle: Equatable {
-    /// Pixels disappear in a radial wave from a point in the cover.
+    /// Pixels appear in a radial wave from a point in the target layer.
     case radial(center: CGPoint)
-    /// Pixels disappear in a completely random order.
+    /// Pixels appear in a completely random order.
     case random
 }
 
-/// A reusable grid of dark squares used as an opaque cover. Revealing the UI
-/// removes cover pixels; closing covers them again. Unlike a layer mask this
-/// never exposes the desktop through the window, so no white holes or seams
-/// can flash during the animation.
+/// A reusable grid of square CALayers used as a layer mask. The grid is built
+/// once per size/scale and then only animated, so opening, closing and results
+/// never allocate layers on the main thread during typing.
 final class PixelRevealGrid {
     private struct Key: Equatable {
         var size: CGSize
@@ -30,63 +29,37 @@ final class PixelRevealGrid {
         buildIfNeeded(size: size, cellSize: cellSize, style: style)
     }
 
-    /// Add the cover above the target layer. `covered == true` starts with the
-    /// UI hidden; `covered == false` starts with the UI visible.
+    /// Apply the mask and put every pixel in the hidden or visible state.
     func prepare(
         on target: CALayer,
-        frame: CGRect,
+        size: CGSize,
         cellSize: CGFloat,
         style: PixelRevealStyle,
-        covered: Bool
+        visible: Bool
     ) {
-        buildIfNeeded(size: frame.size, cellSize: cellSize, style: style)
+        buildIfNeeded(size: size, cellSize: cellSize, style: style)
         guard let container else { return }
-        container.removeFromSuperlayer()
-        container.frame = frame
-        target.addSublayer(container)
+        target.mask = container
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for cell in cells {
             cell.removeAllAnimations()
-            cell.opacity = covered ? 1 : 0
+            cell.opacity = visible ? 1 : 0
         }
         CATransaction.commit()
     }
 
-    /// Remove cover pixels and reveal the content underneath.
+    /// Reveal content pixel by pixel. Pixels keep their size; only opacity
+    /// changes, with a hard 0/1 jump.
     @discardableResult
-    func animateReveal(
+    func animateOpen(
+        on target: CALayer,
         spread: TimeInterval = 0.12,
         jitter: TimeInterval = 0.05,
         duration: TimeInterval = 0.001
     ) -> TimeInterval {
         guard let container else { return 0 }
-        container.removeAllAnimations()
-        let now = CACurrentMediaTime()
-        var maxDelay: TimeInterval = 0
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for (index, cell) in cells.enumerated() {
-            cell.opacity = 0
-            let delay = stepDelay(index: index, covering: false, spread: spread, jitter: jitter)
-            maxDelay = max(maxDelay, delay)
-            let animation = stepAnimation(from: 1.0, to: 0.0, beginTime: now + delay, duration: duration)
-            cell.add(animation, forKey: "pixelStep")
-        }
-        CATransaction.commit()
-        return maxDelay + duration
-    }
-
-    /// Cover the content again, pixel by pixel.
-    @discardableResult
-    func animateCover(
-        spread: TimeInterval = 0.12,
-        jitter: TimeInterval = 0.05,
-        duration: TimeInterval = 0.001
-    ) -> TimeInterval {
-        guard let container else { return 0 }
-        container.removeAllAnimations()
+        target.mask = container
         let now = CACurrentMediaTime()
         var maxDelay: TimeInterval = 0
 
@@ -94,7 +67,7 @@ final class PixelRevealGrid {
         CATransaction.setDisableActions(true)
         for (index, cell) in cells.enumerated() {
             cell.opacity = 1
-            let delay = stepDelay(index: index, covering: true, spread: spread, jitter: jitter)
+            let delay = revealDelay(index: index, opening: true, spread: spread, jitter: jitter)
             maxDelay = max(maxDelay, delay)
             let animation = stepAnimation(from: 0.0, to: 1.0, beginTime: now + delay, duration: duration)
             cell.add(animation, forKey: "pixelStep")
@@ -103,18 +76,32 @@ final class PixelRevealGrid {
         return maxDelay + duration
     }
 
-    /// Remove the cover but keep the grid for the next animation.
-    func clear() {
-        container?.removeFromSuperlayer()
+    /// Cover content pixel by pixel. The field and its surroundings stay
+    /// visible longest.
+    @discardableResult
+    func animateClose(
+        on target: CALayer,
+        spread: TimeInterval = 0.12,
+        jitter: TimeInterval = 0.05,
+        duration: TimeInterval = 0.001
+    ) -> TimeInterval {
+        guard let container else { return 0 }
+        target.mask = container
+        let now = CACurrentMediaTime()
+        var maxDelay: TimeInterval = 0
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for cell in cells {
-            cell.removeAllAnimations()
+        for (index, cell) in cells.enumerated() {
+            cell.opacity = 0
+            let delay = revealDelay(index: index, opening: false, spread: spread, jitter: jitter)
+            maxDelay = max(maxDelay, delay)
+            let animation = stepAnimation(from: 1.0, to: 0.0, beginTime: now + delay, duration: duration)
+            cell.add(animation, forKey: "pixelStep")
         }
         CATransaction.commit()
+        return maxDelay + duration
     }
-
-    // MARK: - Animation
 
     private func stepAnimation(
         from: Double,
@@ -133,9 +120,9 @@ final class PixelRevealGrid {
         return animation
     }
 
-    private func stepDelay(
+    private func revealDelay(
         index: Int,
-        covering: Bool,
+        opening: Bool,
         spread: TimeInterval,
         jitter: TimeInterval
     ) -> TimeInterval {
@@ -145,11 +132,22 @@ final class PixelRevealGrid {
             return random * spread
         case .radial:
             let position = Double(normalizedPosition[index])
-            // Reveal: near the search bar first. Cover: far pixels first.
-            let base = covering ? (1 - position) * spread : position * spread
+            let base = opening ? position * spread : (1 - position) * spread
+            // Randomness grows the farther a pixel is from the origin.
             let weight = 0.25 + 0.75 * position
             return base + random * jitter * weight
         }
+    }
+
+    /// Remove the mask but keep the grid for the next animation.
+    func clear(from target: CALayer) {
+        target.mask = nil
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for cell in cells {
+            cell.removeAllAnimations()
+        }
+        CATransaction.commit()
     }
 
     // MARK: - Grid
@@ -160,6 +158,8 @@ final class PixelRevealGrid {
 
         let width = max(1, size.width)
         let height = max(1, size.height)
+        // Integer point size and a 1 pt overlap: adjacent mask cells share an
+        // edge, so fractional window scales cannot leave white seams.
         let cell = max(1, ceil(cellSize))
         let overlap: CGFloat = 1
         let columns = max(1, Int(ceil(width / cell)))
@@ -169,6 +169,7 @@ final class PixelRevealGrid {
         container.frame = CGRect(x: 0, y: 0, width: width, height: height)
         container.masksToBounds = false
         container.isGeometryFlipped = true
+        container.allowsEdgeAntialiasing = false
 
         var newCells: [CALayer] = []
         var positions: [CGFloat] = []
@@ -196,7 +197,8 @@ final class PixelRevealGrid {
                 layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
                 layer.bounds = CGRect(x: 0, y: 0, width: w, height: h)
                 layer.position = CGPoint(x: x + w / 2, y: y + h / 2)
-                layer.backgroundColor = Theme.bg.cgColor
+                layer.backgroundColor = NSColor.white.cgColor
+                layer.allowsEdgeAntialiasing = false
                 container.addSublayer(layer)
                 newCells.append(layer)
 

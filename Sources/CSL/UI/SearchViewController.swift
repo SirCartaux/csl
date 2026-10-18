@@ -61,13 +61,13 @@ final class SearchViewController: NSViewController {
         CGPoint(x: searchField.frame.midX, y: searchField.frame.midY)
     }
 
-    private var panelCoverFrame: CGRect {
-        Layout.panelRect(in: rootView.bounds)
-    }
-
-    private var radialCoverCenter: CGPoint {
-        let panel = panelCoverFrame
-        return CGPoint(x: fieldCenter.x - panel.minX, y: fieldCenter.y - panel.minY)
+    /// The mask layer's geometry is flipped relative to the root layer, so
+    /// mirror Y for the radial wave.
+    private var radialMaskCenter: CGPoint {
+        CGPoint(
+            x: fieldCenter.x,
+            y: max(0, rootView.bounds.height - fieldCenter.y)
+        )
     }
 
     func dismissQuickLook() {
@@ -279,9 +279,9 @@ final class SearchViewController: NSViewController {
         scrollView.wantsLayer = true
         guard rootView.bounds.width > 1, rootView.bounds.height > 1 else { return }
         rootReveal.prewarm(
-            size: panelCoverFrame.size,
+            size: rootView.bounds.size,
             cellSize: pixelCellSize,
-            style: .radial(center: radialCoverCenter)
+            style: .radial(center: radialMaskCenter)
         )
     }
 
@@ -290,30 +290,31 @@ final class SearchViewController: NSViewController {
         guard animationsEnabled else { return }
         cancelPixelAnimations()
         rootView.wantsLayer = true
-        guard panelCoverFrame.width > 1, panelCoverFrame.height > 1,
-              let layer = rootView.layer else { return }
+        let size = rootView.bounds.size
+        guard size.width > 1, size.height > 1, let layer = rootView.layer else { return }
         rootReveal.prepare(
             on: layer,
-            frame: panelCoverFrame,
+            size: size,
             cellSize: pixelCellSize,
-            style: .radial(center: radialCoverCenter),
-            covered: true
+            style: .radial(center: radialMaskCenter),
+            visible: false
         )
         pixelRevealActive = true
     }
 
     /// Start the pixel wave only after the panel is key and the field focused.
     func startPixelOpen() {
-        guard animationsEnabled, pixelRevealActive else { return }
-        let total = rootReveal.animateReveal(
+        guard animationsEnabled, pixelRevealActive, let layerRoot = rootView.layer else { return }
+        let total = rootReveal.animateOpen(
+            on: layerRoot,
             spread: 0.12 * pixelTimeScale,
             jitter: 0.05 * pixelTimeScale,
             duration: 0.001 * pixelTimeScale
         )
         pixelOpenWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.rootReveal.clear()
+        let work = DispatchWorkItem { [weak self, weak layerRoot] in
+            guard let self, let layerRoot else { return }
+            self.rootReveal.clear(from: layerRoot)
             self.pixelRevealActive = false
         }
         pixelOpenWork = work
@@ -330,20 +331,21 @@ final class SearchViewController: NSViewController {
         cancelPixelAnimations()
         pixelClosing = true
         rootView.wantsLayer = true
-        guard panelCoverFrame.width > 1, panelCoverFrame.height > 1,
-              let layer = rootView.layer else {
+        let size = rootView.bounds.size
+        guard size.width > 1, size.height > 1, let layer = rootView.layer else {
             pixelClosing = false
             completion()
             return
         }
         rootReveal.prepare(
             on: layer,
-            frame: panelCoverFrame,
+            size: size,
             cellSize: pixelCellSize,
-            style: .radial(center: radialCoverCenter),
-            covered: false
+            style: .radial(center: radialMaskCenter),
+            visible: true
         )
-        let total = rootReveal.animateCover(
+        let total = rootReveal.animateClose(
+            on: layer,
             spread: 0.12 * pixelTimeScale,
             jitter: 0.05 * pixelTimeScale,
             duration: 0.001 * pixelTimeScale
@@ -364,7 +366,9 @@ final class SearchViewController: NSViewController {
         pixelCloseWork?.cancel()
         pixelCloseWork = nil
         cancelRowReveals()
-        rootReveal.clear()
+        if let layer = rootView.layer {
+            rootReveal.clear(from: layer)
+        }
         pixelRevealActive = false
         pixelClosing = false
     }
@@ -400,12 +404,13 @@ final class SearchViewController: NSViewController {
             let grid = PixelRevealGrid()
             grid.prepare(
                 on: layer,
-                frame: rowView.bounds,
+                size: rowView.bounds.size,
                 cellSize: rowPixelCellSize,
                 style: .random,
-                covered: true
+                visible: false
             )
-            let total = grid.animateReveal(
+            let total = grid.animateOpen(
+                on: layer,
                 spread: 0.08 * pixelTimeScale,
                 jitter: 0,
                 duration: 0.001 * pixelTimeScale
@@ -418,8 +423,8 @@ final class SearchViewController: NSViewController {
         rowReveals = newReveals
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            for (grid, _) in self.rowReveals {
-                grid.clear()
+            for (grid, layer) in self.rowReveals {
+                grid.clear(from: layer)
             }
             self.rowReveals.removeAll()
             self.rowRevealWork = nil
@@ -431,8 +436,8 @@ final class SearchViewController: NSViewController {
     private func cancelRowReveals() {
         rowRevealWork?.cancel()
         rowRevealWork = nil
-        for (grid, _) in rowReveals {
-            grid.clear()
+        for (grid, layer) in rowReveals {
+            grid.clear(from: layer)
         }
         rowReveals.removeAll()
     }

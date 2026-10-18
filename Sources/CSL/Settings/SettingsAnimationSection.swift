@@ -123,7 +123,7 @@ final class AnimationSection: SettingsSection {
 
         drawText("LANGSAM", x: 0, y: 140, width: 90, font: 8, color: Theme.textFaint)
         drawText("SCHNELL", x: bounds.width - 90, y: 140, width: 90, font: 8, color: Theme.textFaint, align: .right)
-        drawText("0,25X", x: 92, y: 140, width: 50, font: 8, color: Theme.textFaint)
+        drawText("0,1X", x: 92, y: 140, width: 50, font: 8, color: Theme.textFaint)
         drawText("2,0X", x: bounds.width - 142, y: 140, width: 50, font: 8, color: Theme.textFaint, align: .right)
 
         PixelDraw.hLine(x: 0, y: 176, width: bounds.width, color: Theme.line)
