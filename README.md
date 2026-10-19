@@ -83,8 +83,8 @@ window, field editor and focus is more direct in AppKit.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.4.3.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.4.3.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.5.2.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.5.2.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
@@ -106,6 +106,7 @@ git clone https://github.com/SirCartaux/csl.git
 cd csl
 
 ./scripts/build.sh release   # builds build/CSL.app
+./scripts/build.sh release universal  # Apple Silicon + Intel release
 open build/CSL.app           # starts in the menu bar
 
 # or with live logs in the terminal:
@@ -442,3 +443,30 @@ If you have an idea, open an issue with reproduction steps or a screenshot.
 <p align="center">
   <strong>If CSL makes your day faster, leave a ⭐.</strong>
 </p>
+
+
+### Inline function viewer
+
+Type `y=x^2`, `f(x)=sin(x)` or `2x+1` into the launcher to open an inline graph in CSL's pixel style. The graph replaces the result list while you edit the function; ordinary queries return to search automatically.
+
+- **AUTO / Enter / double-click:** fit a useful sampled region, including numerically detected roots and extrema. Shifted features are explored out to x = ±5,000; this is a numerical preview, not a guarantee of finding every feature.
+- **Mouse wheel / + / −:** smoothly zoom around the pointer (buttons use the center). **Trackpad pinch:** direct zoom. **Two-finger scroll / drag:** pan, including native macOS momentum and natural scrolling. **Hover:** read coordinates and snap to green root/extremum markers. Reduced Motion disables wheel easing.
+- Supports `+ - * / ^`, implicit multiplication (`2x`, `x(x+1)`), `pi`, `e`, `tau`, square/cube superscripts, and decimal comma or decimal point.
+- Functions: `sin`, `cos`, `tan`, inverse/hyperbolic trig, `sqrt`, `cbrt`, `abs`, `exp`, `ln`, `log` (base 10), `log2`, `floor`, `ceil`, `round`, plus `pow`, `min`, `max` with semicolon-separated arguments, e.g. `max(x;0)`. Angles use radians.
+- Undefined regions and detected discontinuities break the curve. An incomplete expression displays input help; a valid expression with no visible real values displays an empty-state message.
+
+Run the expression, graph geometry and launcher integration checks with `swift test`.
+
+
+### Performance (0.5.1)
+
+Index matching now rejects nonmatching names before inspecting paths. Exclusions use a single component pass with the same rules; cancelled scans stop and discard queued callbacks. Index dictionaries are prepared off the UI thread at startup. The first streamed result remains immediate; subsequent bursts are merged once per frame, avoiding repeated sorting and list reloads. Hidden launchers do not restart searches when background loading finishes. Graph input is coalesced at drawing time, curve paths are cached for hover redraws, and extrema are refined after navigation settles.
+
+A local release-build benchmark (30,000 synthetic files, median of three runs, identical result counts) measured targeted search at 429 → 10 ms, a broad query with 27,483 hits at 592 → 202 ms, and a miss at 424 → 7 ms. These measure the in-memory scan, not Spotlight latency or total end-to-end search time. Existing visuals and reveal animation timing are unchanged.
+
+
+### Questions and Google search (0.5.2)
+
+Type a longer natural-language question, for example `Wie kann ich meinen Mac schneller machen?`, and CSL shows **SEARCH GOOGLE**. Press **Enter** to open the full question in your default browser. Use `g …` or `google …` to explicitly search shorter terms. Detection happens locally; typing does not send a request. App names, paths, calculations and function expressions retain their existing behavior.
+
+Trackpad magnification is handled by a native recognizer on the launcher root, so the search field can keep keyboard focus while you pinch over the graph.

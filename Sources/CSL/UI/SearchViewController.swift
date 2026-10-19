@@ -17,6 +17,9 @@ final class SearchViewController: NSViewController {
     private let resizeHandle = ResizeHandleView()
     private let placeholderView = SearchPlaceholderView()
     private let searchActivity = PixelActivityView()
+    private let functionGraph = FunctionGraphView()
+    private var pinchAnchor: NSPoint?
+    private lazy var graphPinch = NSMagnificationGestureRecognizer(target: self, action: #selector(handleGraphPinch(_:)))
     private let calculatorHint = CalculatorHintView(frame: .zero)
     private let rootReveal = PixelRevealGrid()
     private var pixelOpenWork: DispatchWorkItem?
@@ -120,9 +123,21 @@ final class SearchViewController: NSViewController {
             self?.copyCalculatorResult()
         }
         rootView.addSubview(calculatorHint)
+        functionGraph.isHidden = true
+        rootView.addSubview(functionGraph, positioned: .below, relativeTo: resizeHandle)
+        rootView.allowedTouchTypes = [.direct, .indirect]
+        functionGraph.allowedTouchTypes = [.direct, .indirect]
+        graphPinch.delegate = self
+        graphPinch.delaysMagnificationEvents = true
+        rootView.addGestureRecognizer(graphPinch)
 
         engine?.onIndexProgress = { [weak self] scanned, total, done in
             guard let self else { return }
+            guard !self.rootView.graphActive else {
+                self.rootView.indexProgress = nil
+                self.searchActivity.stop()
+                return
+            }
             if done {
                 if self.indexWasScanning, total > 0, scanned >= total {
                     self.pendingResultFlash = true
@@ -162,6 +177,8 @@ final class SearchViewController: NSViewController {
         glowView.frame = view.bounds
         resizeHandle.frame = view.bounds
         scrollView.frame = listRect
+        functionGraph.frame = listRect
+        functionGraph.needsDisplay = true
         searchField.frame = CGRect(
             x: panel.minX + Theme.ls(44),
             y: fieldRect.minY + Theme.ls(12),
@@ -303,6 +320,10 @@ final class SearchViewController: NSViewController {
         calculatorHint.isHidden = true
         calculatorCopyText = nil
         rootView.calculatorActive = false
+        rootView.graphActive = false
+        functionGraph.stopInteraction()
+        functionGraph.isHidden = true
+        scrollView.isHidden = false
         results = []
         selectedIndex = 0
         rootView.query = ""
@@ -488,7 +509,25 @@ final class SearchViewController: NSViewController {
         resultGlows.removeAll()
     }
 
+    @objc private func handleGraphPinch(_ recognizer: NSMagnificationGestureRecognizer) {
+        guard rootView.graphActive else { return }
+        if recognizer.state == .began || pinchAnchor == nil {
+            pinchAnchor = recognizer.location(in: functionGraph)
+        }
+        if recognizer.state == .began || recognizer.state == .changed || recognizer.state == .ended,
+           let anchor = pinchAnchor {
+            functionGraph.magnify(by: recognizer.magnification, at: anchor)
+            // The recognizer accumulates magnification; consume each delta once.
+            recognizer.magnification = 0
+        }
+        if recognizer.state == .ended || recognizer.state == .cancelled || recognizer.state == .failed {
+            pinchAnchor = nil
+        }
+    }
+
     func stopGlow() {
+        pinchAnchor = nil
+        functionGraph.stopInteraction()
         glowView.stopPulse()
     }
 
@@ -515,6 +554,7 @@ final class SearchViewController: NSViewController {
     }
 
     private var listHeight: CGFloat {
+        if rootView.graphActive { return Theme.ls(340) }
         guard !results.isEmpty else { return Theme.emptyListHeight }
         let rows = min(results.count, Theme.maxRows)
         return max(Theme.emptyListHeight, CGFloat(rows) * Theme.rowHeight)
@@ -550,6 +590,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Results
 
     func apply(results: [SearchResult], isSearching: Bool) {
+        guard !rootView.graphActive else { return }
         let previousID: String? = self.results.indices.contains(selectedIndex)
             ? self.results[selectedIndex].id
             : nil
@@ -614,7 +655,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Selection
 
     private func moveSelection(by delta: Int) {
-        guard !results.isEmpty else { return }
+        guard !rootView.graphActive, !results.isEmpty else { return }
         let next = max(0, min(results.count - 1, selectedIndex + delta))
         guard next != selectedIndex else { return }
         userNavigated = true
@@ -625,6 +666,7 @@ final class SearchViewController: NSViewController {
     }
 
     private func chooseSelected(reveal: Bool) {
+        guard !rootView.graphActive else { return }
         guard results.indices.contains(selectedIndex) else { return }
         Log.debug("open result: \(results[selectedIndex].title)")
         onChoose?(results[selectedIndex], reveal)
@@ -652,7 +694,7 @@ final class SearchViewController: NSViewController {
     }
 
     private func beginResultsNavigation() {
-        guard !results.isEmpty else { return }
+        guard !rootView.graphActive, !results.isEmpty else { return }
         isNavigatingResults = true
         selectedIndex = 0
         tableView.reloadData()
@@ -939,7 +981,7 @@ final class SearchViewController: NSViewController {
 
 extension SearchViewController: NSTextFieldDelegate {
     private func updateCalculatorHint() {
-        guard let calculation = Calculator.evaluate(searchField.stringValue),
+        guard !rootView.graphActive, let calculation = Calculator.evaluate(searchField.stringValue),
               !searchField.stringValue.isEmpty else {
             calculatorCopyText = nil
             if !calculatorHint.isHidden {
@@ -1006,8 +1048,25 @@ extension SearchViewController: NSTextFieldDelegate {
         userScrolledResults = false
         selectedIndex = 0
         rootView.query = searchField.stringValue
+        rootView.graphActive = WebSearchProvider.query(from: searchField.stringValue) == nil
+            && FunctionExpression.body(of: searchField.stringValue) != nil
+        if !rootView.graphActive { functionGraph.stopInteraction() }
+        functionGraph.isHidden = !rootView.graphActive
+        scrollView.isHidden = rootView.graphActive
+        if rootView.graphActive {
+            dismissQuickLook()
+            cancelResultGlows()
+            engine?.cancel()
+            results = []
+            tableView.reloadData()
+            rootView.resultCount = 0
+            rootView.isSearching = false
+            functionGraph.configure(searchField.stringValue)
+        } else {
+            engine?.search(searchField.stringValue)
+        }
         updateCalculatorHint()
-        engine?.search(searchField.stringValue)
+        refreshWindowSize()
         rootView.needsDisplay = true
     }
 
@@ -1020,6 +1079,7 @@ extension SearchViewController: NSTextFieldDelegate {
             moveSelection(by: -1)
             return true
         case #selector(NSResponder.insertNewline(_:)):
+            if rootView.graphActive { functionGraph.resetViewport(); return true }
             if copyCalculatorResult() {
                 return true
             }
@@ -1226,5 +1286,13 @@ private final class ResultGlowView: NSView {
             color: Theme.accent.withAlphaComponent(0.5),
             notch: 2
         )
+    }
+}
+
+
+extension SearchViewController: NSGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: NSGestureRecognizer) -> Bool {
+        guard gestureRecognizer === graphPinch, rootView.graphActive else { return false }
+        return functionGraph.containsPlotPoint(gestureRecognizer.location(in: functionGraph))
     }
 }

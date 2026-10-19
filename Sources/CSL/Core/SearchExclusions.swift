@@ -23,10 +23,19 @@ enum SearchExclusions {
         "/.next/"
     ]
 
+    private static let directoryNames = Set(fragments.filter { $0.hasSuffix("/") }.map {
+        String($0.dropFirst().dropLast())
+    })
+
     static func isExcluded(_ path: String) -> Bool {
-        let lower = path.lowercased()
-        for fragment in fragments where lower.contains(fragment) {
-            return true
+        // One component pass instead of seventeen substring searches. Keep the
+        // original boundary semantics: /build/ excludes descendants, not a file
+        // named "build"; /cmake-build- is deliberately a component prefix.
+        let components = path.lowercased().split(separator: "/", omittingEmptySubsequences: false)
+        for index in components.indices.dropFirst() {
+            let component = components[index]
+            if component.hasPrefix("cmake-build-") { return true }
+            if index < components.count-1, directoryNames.contains(String(component)) { return true }
         }
         return false
     }

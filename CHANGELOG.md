@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.2 — 2026-10-19
+
+- Route trackpad pinch through a native root-level magnification recognizer with indirect touch support, preserving search-field focus.
+- Add immediate Google results for natural-language questions and explicit `g …` / `google …` searches. Enter opens the safely encoded query in the default browser; typing remains local.
+- Add Google detection/encoding, search-mode and native pinch-handler integration tests.
+- Add a reproducible universal Apple Silicon + Intel build option.
+
+## 0.5.1 — 2026-10-19
+
+- Add smooth pointer-anchored mouse-wheel zoom and direct trackpad pinch zoom.
+- Support two-finger panning with native natural scrolling and momentum; preserve drag and AUTO controls.
+- Cache graph paths, coalesce redraw work and defer feature refinement during navigation.
+- Accelerate index matching and path exclusions without changing filtering/ranking rules.
+- Stop cancelled scans and stale deliveries, coalesce streamed result bursts, and prepare loaded indexes off the UI thread.
+- Reuse normalized ranking inputs and avoid redundant Spotlight candidate work.
+- Verify gesture geometry, frame-rate-independent easing, exclusion parity and async cancellation.
+
+## 0.5.0 — 2026-10-19
+
+- Add an inline function viewer for `y=…`, `f(x)=…` and expressions containing x.
+- Match the existing pixel theme with an amber curve, labeled grid and green numerical root/extremum markers.
+- Add automatic framing, pointer-centered zoom, pan, coordinate inspection and reset controls.
+- Compile bounded mathematical expressions without executing code; separate discontinuities and undefined domains.
+- Add parser, viewport, discontinuity, calculator regression and launcher transition tests.
+
 ## 0.4.3 — 2026-10-19
 
 ### Launcher

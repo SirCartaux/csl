@@ -87,6 +87,7 @@ final class RootView: NSView {
     var query: String = ""
     var resultCount: Int = 0
     var isSearching: Bool = false
+    var graphActive = false { didSet { needsDisplay = true } }
     var calculatorActive = false {
         didSet { needsDisplay = true }
     }
@@ -199,7 +200,7 @@ final class RootView: NSView {
 
     private func drawList(panel: CGRect) {
         let rect = Layout.listRect(in: bounds)
-        guard resultCount == 0 else { return }
+        guard !graphActive, resultCount == 0 else { return }
 
         if isSearching || indexProgress != nil {
             drawCentered(
@@ -264,6 +265,14 @@ final class RootView: NSView {
         let rect = Layout.footerRect(in: bounds)
         PixelDraw.hLine(x: rect.minX, y: rect.minY, width: rect.width, color: Theme.line, thickness: max(1, Theme.ls(1)))
 
+        if graphActive {
+            var x = rect.minX + Theme.ls(18)
+            x = drawHint(key: "SCROLL", label: "ZOOM", at: x, centerY: rect.midY)
+            x = drawHint(key: "DRAG", label: "PAN", at: x, centerY: rect.midY)
+            x = drawHint(key: "ENTER", label: "AUTO", at: x, centerY: rect.midY)
+            _ = drawHint(key: "ESC", label: "CLOSE", at: x, centerY: rect.midY)
+            return
+        }
         var cursor: CGFloat = rect.minX + Theme.ls(18)
         cursor = drawHint(key: "UP/DOWN", label: "NAVIGATE", at: cursor, centerY: rect.midY)
         cursor = drawHint(key: "ENTER", label: "OPEN", at: cursor, centerY: rect.midY)

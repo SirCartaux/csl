@@ -151,6 +151,7 @@ final class FileProvider {
                       let path = item.value(forAttribute: NSMetadataItemPathKey) as? String
                 else { continue }
 
+                guard candidates[path] == nil else { continue }
                 let url = URL(fileURLWithPath: path)
                 let name = url.lastPathComponent
 
@@ -160,7 +161,6 @@ final class FileProvider {
                       !SettingsStore.shared.isIgnoredFast(path),
                       !SettingsStore.shared.isExtensionIgnored(url.pathExtension)
                 else { continue }
-                guard candidates[path] == nil else { continue }
                 guard let match = FuzzyMatcher.match(term, in: name) else { continue }
 
                 candidates[path] = SearchResult(

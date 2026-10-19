@@ -45,7 +45,18 @@ final class FileIndex {
     private var changeWorkItem: DispatchWorkItem?
     private var isDirty = false
 
-    private init() {}
+    /// An optional in-memory snapshot also permits isolated search verification.
+    init(initialEntries: [IndexedFile]? = nil) {
+        if let initialEntries {
+            for entry in initialEntries {
+                entriesByPath[entry.path] = entry
+                pathsByRoot[entry.root, default: []].insert(entry.path)
+            }
+            cachedEntries = Array(entriesByPath.values)
+            cacheDirty = false
+            isLoaded = true
+        }
+    }
 
     var totalCount: Int { entriesByPath.count }
 
@@ -62,22 +73,30 @@ final class FileIndex {
 
         ioQueue.async {
             let stored = Self.readFromDisk()
+            // Prepare the large dictionaries/snapshot on the I/O queue. Only
+            // publish their value-semantic storage on main, keeping hotkeys responsive.
+            var byPath: [String: IndexedFile] = [:]
+            byPath.reserveCapacity(stored.entries.count)
+            var byRoot: [String: Set<String>] = [:]
+            for entry in stored.entries {
+                byPath[entry.path] = entry
+                byRoot[entry.root, default: []].insert(entry.path)
+            }
+            var roots = stored.roots
+            for (root, paths) in byRoot {
+                if roots[root] == nil {
+                    roots[root] = IndexRootMeta(count: paths.count, lastIndexed: Date())
+                } else {
+                    roots[root]?.count = paths.count
+                }
+            }
+            let snapshot = Array(byPath.values)
             DispatchQueue.main.async {
-                self.entriesByPath.removeAll(keepingCapacity: true)
-                self.pathsByRoot.removeAll(keepingCapacity: true)
-                for entry in stored.entries {
-                    self.entriesByPath[entry.path] = entry
-                    self.pathsByRoot[entry.root, default: []].insert(entry.path)
-                }
-                self.roots = stored.roots
-                for (root, paths) in self.pathsByRoot {
-                    if self.roots[root] == nil {
-                        self.roots[root] = IndexRootMeta(count: paths.count, lastIndexed: Date())
-                    } else {
-                        self.roots[root]?.count = paths.count
-                    }
-                }
-                self.cacheDirty = true
+                self.entriesByPath = byPath
+                self.pathsByRoot = byRoot
+                self.roots = roots
+                self.cachedEntries = snapshot
+                self.cacheDirty = false
                 self.isLoaded = true
                 Log.debug("index loaded: \(self.entriesByPath.count) entries, \(self.roots.count) roots")
                 NotificationCenter.default.post(name: .cslIndexLoaded, object: nil)
@@ -327,6 +346,8 @@ final class FileIndex {
         batch: (([SearchResult]) -> Void)? = nil,
         completion: @escaping ([SearchResult]) -> Void
     ) {
+        cancelSearch()
+        let token = currentSearchToken()
         guard isLoaded, !entriesByPath.isEmpty, query.count >= 2 else {
             completion([])
             return
@@ -337,11 +358,6 @@ final class FileIndex {
         let ignoredFolders = settings.ignoredFolders
         let ignoredExtensions = Set(settings.ignoredExtensions)
 
-        tokenLock.lock()
-        searchToken += 1
-        let token = searchToken
-        tokenLock.unlock()
-
         searchQueue.async {
             let matches = Self.search(
                 snapshot,
@@ -351,29 +367,43 @@ final class FileIndex {
                 limit: Int.max,
                 isCancelled: { [weak self] in
                     guard let self else { return true }
-                    self.tokenLock.lock()
-                    let current = self.searchToken
-                    self.tokenLock.unlock()
-                    return current != token
+                    return self.currentSearchToken() != token
                 },
                 progress: { scanned, total in
                     guard let progress else { return }
                     DispatchQueue.main.async {
+                        guard self.currentSearchToken() == token else { return }
                         progress(scanned, total)
                     }
                 },
                 batch: { results in
                     guard let batch else { return }
                     DispatchQueue.main.async {
+                        guard self.currentSearchToken() == token else { return }
                         batch(results)
                     }
                 }
             )
-            DispatchQueue.main.async { completion(matches) }
+            DispatchQueue.main.async {
+                guard self.currentSearchToken() == token else { return }
+                completion(matches)
+            }
         }
     }
 
-    private static func search(
+    func cancelSearch() {
+        tokenLock.lock()
+        searchToken &+= 1
+        tokenLock.unlock()
+    }
+
+    private func currentSearchToken() -> Int {
+        tokenLock.lock()
+        defer { tokenLock.unlock() }
+        return searchToken
+    }
+
+    static func search(
         _ entries: [IndexedFile],
         needle: String,
         ignoredFolders: [String],
@@ -398,9 +428,6 @@ final class FileIndex {
                 }
             }
             if index % 512 == 0, isCancelled() { return [] }
-            if !entry.ext.isEmpty, ignoredExtensions.contains(entry.ext) { continue }
-            if !ignoredFolders.isEmpty, SettingsStore.path(entry.path, isInsideAny: ignoredFolders) { continue }
-            if SearchExclusions.isExcluded(entry.path) { continue }
 
             let lower = entry.lowerName as NSString
             let found = lower.range(of: needle)
@@ -422,6 +449,10 @@ final class FileIndex {
             // Mid-word substring hits are too noisy; include every prefix /
             // word-boundary match, which is what counts as likely.
             guard likelyScore >= likelyThreshold else { continue }
+            if !entry.ext.isEmpty, ignoredExtensions.contains(entry.ext) { continue }
+            if !ignoredFolders.isEmpty, SettingsStore.path(entry.path, isInsideAny: ignoredFolders) { continue }
+            if SearchExclusions.isExcluded(entry.path) { continue }
+
 
             let url = URL(fileURLWithPath: entry.path)
             let result = SearchResult(

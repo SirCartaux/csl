@@ -20,6 +20,10 @@ final class SearchEngine {
     private let fileCache = FileResultCache.shared
 
     private var generation = 0
+    private var searchActive = false
+    private var streamUpdate: DispatchWorkItem?
+    private var streamedIDs = Set<String>()
+    private var deliveredFirstBatch = false
     private var currentQuery = ""
     private var instantResults: [SearchResult] = []
     private var cachedFileResults: [SearchResult] = []
@@ -33,7 +37,7 @@ final class SearchEngine {
 
     func warmUp() {
         appProvider.warmUp { [weak self] in
-            guard let self else { return }
+            guard let self, self.searchActive else { return }
             // The user was faster than the index. Fold the apps in without
             // restarting the running file query.
             self.refreshInstantResults()
@@ -43,6 +47,9 @@ final class SearchEngine {
     func search(_ raw: String) {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        searchActive = true
+        streamUpdate?.cancel(); streamUpdate = nil
+        fileIndex.cancelSearch()
         generation += 1
         let generation = self.generation
         fileProvider.cancel()
@@ -58,6 +65,13 @@ final class SearchEngine {
 
         guard !trimmed.isEmpty else {
             instantResults = commandProvider.allResults()
+            fileSearching = false
+            emit()
+            return
+        }
+
+        if let google = WebSearchProvider.result(for: trimmed) {
+            instantResults = [google]
             fileSearching = false
             emit()
             return
@@ -84,6 +98,9 @@ final class SearchEngine {
     }
 
     func cancel() {
+        searchActive = false
+        streamUpdate?.cancel(); streamUpdate = nil
+        fileIndex.cancelSearch()
         generation += 1
         fileProvider.cancel()
         cachedFileResults = []
@@ -96,6 +113,9 @@ final class SearchEngine {
         started = CACurrentMediaTime()
         if currentQuery.isEmpty {
             instantResults = commandProvider.allResults()
+        } else if let google = WebSearchProvider.result(for: currentQuery) {
+            instantResults = [google]
+            fileSearching = false
         } else {
             instantResults = appProvider.results(for: currentQuery)
                 + commandProvider.results(for: currentQuery)
@@ -108,13 +128,16 @@ final class SearchEngine {
             instantResults.sort(by: Self.ranking)
         }
         emit()
-        if !currentQuery.isEmpty {
+        if !currentQuery.isEmpty, WebSearchProvider.query(from: currentQuery) == nil {
             searchIndex(for: currentQuery, generation: generation)
         }
     }
 
     private func searchIndex(for query: String, generation: Int) {
+        streamUpdate?.cancel(); streamUpdate = nil
         streamedFileResults = []
+        streamedIDs.removeAll(keepingCapacity: true)
+        deliveredFirstBatch = false
         let total = fileIndex.totalCount
         if total > 0 {
             onIndexProgress?(0, total, false)
@@ -125,16 +148,16 @@ final class SearchEngine {
             self.onIndexProgress?(scanned, total, false)
         }, batch: { [weak self] batch in
             guard let self, self.generation == generation else { return }
-            let known = Set(self.streamedFileResults.map(\.id))
-            let fresh = batch.filter { !known.contains($0.id) }
+            let fresh = batch.filter { self.streamedIDs.insert($0.id).inserted }
             guard !fresh.isEmpty else { return }
             self.streamedFileResults.append(contentsOf: fresh)
             // Re-rank the complete pool so each newly found hit appears at its
             // rule-based position, not at the bottom of the list.
-            self.emit()
+            self.emitStreamUpdate()
             Log.debug("file stream: +\(fresh.count) (\(self.streamedFileResults.count) total, query: \"\(query)\")")
         }) { [weak self] results in
             guard let self, self.generation == generation else { return }
+            self.streamUpdate?.cancel(); self.streamUpdate = nil
             self.onIndexProgress?(total, total, true)
 
             // Replace the cached first screenful with the complete, sorted
@@ -162,6 +185,7 @@ final class SearchEngine {
 
     /// Re-run the current query after settings or the index changed.
     func refresh() {
+        guard searchActive else { return }
         if currentQuery.isEmpty {
             refreshInstantResults()
         } else {
@@ -171,8 +195,25 @@ final class SearchEngine {
 
     /// Only fold in new index entries; do not restart the Spotlight query.
     func refreshIndexResults() {
-        guard !currentQuery.isEmpty else { return }
+        guard searchActive, !currentQuery.isEmpty, WebSearchProvider.query(from: currentQuery) == nil else { return }
         searchIndex(for: currentQuery, generation: generation)
+    }
+
+    /// Keep the very first hit immediate; merge later bursts once per frame.
+    private func emitStreamUpdate() {
+        if !deliveredFirstBatch {
+            deliveredFirstBatch = true
+            emit()
+            return
+        }
+        guard streamUpdate == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.streamUpdate = nil
+            self.emit()
+        }
+        streamUpdate = work
+        DispatchQueue.main.asyncAfter(deadline: .now()+1.0/60.0, execute: work)
     }
 
     private func emit() {

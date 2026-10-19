@@ -167,13 +167,15 @@ final class ResultRanker {
             titleCounts[result.title.lowercased(), default: 0] += 1
         }
 
+        let needle = trimmed.lowercased()
         var seen = Set<String>()
-        var scored: [(result: SearchResult, score: Int, tier: Int)] = []
+        var scored: [(result: SearchResult, score: Int, tier: Int, titleLength: Int)] = []
         scored.reserveCapacity(results.count)
 
         for result in results {
             guard seen.insert(result.id).inserted else { continue }
-            let rawTier = Self.tier(for: result, query: trimmed)
+            let title = result.title.lowercased()
+            let rawTier = Self.tier(for: result, needle: needle, title: title)
             var tier = rawTier
 
             var boost = intent.boost(for: result.kind)
@@ -185,7 +187,7 @@ final class ResultRanker {
                 boost += 100
                 tier = 1
             }
-            if rawTier == 0, let count = titleCounts[result.title.lowercased()], count > 1 {
+            if rawTier == 0, let count = titleCounts[title], count > 1 {
                 // Ambiguous exact title: six "Settings" folders are not six
                 // equally good answers. Demote them to prefix level and let a
                 // unique command/app/file take over.
@@ -216,7 +218,7 @@ final class ResultRanker {
 
             let quality = Self.quality(forTier: tier)
             boost += Int((min(personalCap, personal) * quality).rounded())
-            scored.append((result, result.score + boost, tier))
+            scored.append((result, result.score + boost, tier, result.title.count))
         }
 
         scored.sort {
@@ -225,8 +227,8 @@ final class ResultRanker {
             let leftKind = Self.kindRank($0.result.kind)
             let rightKind = Self.kindRank($1.result.kind)
             if leftKind != rightKind { return leftKind < rightKind }
-            if $0.result.title.count != $1.result.title.count {
-                return $0.result.title.count < $1.result.title.count
+            if $0.titleLength != $1.titleLength {
+                return $0.titleLength < $1.titleLength
             }
             return $0.result.title.localizedCaseInsensitiveCompare($1.result.title) == .orderedAscending
         }
@@ -404,9 +406,7 @@ final class ResultRanker {
 
     // MARK: - Ranking ingredients
 
-    private static func tier(for result: SearchResult, query: String) -> Int {
-        let needle = query.lowercased()
-        let title = result.title.lowercased()
+    private static func tier(for result: SearchResult, needle: String, title: String) -> Int {
 
         switch result.kind {
         case .command, .website:
@@ -481,9 +481,9 @@ final class ResultRanker {
 
     private func folderBoost(for result: SearchResult, now: Date) -> Double {
         guard result.kind == .file,
+              let folders = data.recentFolders, !folders.isEmpty,
               let url = Self.fileURL(for: result) else { return 0 }
         let folder = url.deletingLastPathComponent().path
-        guard let folders = data.recentFolders, !folders.isEmpty else { return 0 }
 
         var best = 0.0
         for entry in folders {
