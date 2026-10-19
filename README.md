@@ -84,8 +84,8 @@ window, field editor and focus is more direct in AppKit.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.6.1.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.6.1.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.6.2.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.6.2.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 

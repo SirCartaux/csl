@@ -207,7 +207,12 @@ final class RootView: NSView {
         )
         PixelDraw.frame(capRect, thickness: max(1, Theme.ls(1)), color: Theme.border, notch: Theme.ls(2))
         (keyText as NSString).draw(
-            in: CGRect(x: capRect.minX + Theme.ls(6), y: capRect.minY + Theme.ls(3), width: keySize.width + Theme.ls(2), height: Theme.ls(12)),
+            in: CGRect(
+                x: floor(capRect.midX - keySize.width / 2),
+                y: floor(capRect.midY - keySize.height / 2),
+                width: keySize.width + Theme.ls(2),
+                height: keySize.height
+            ),
             withAttributes: keyAttributes
         )
     }

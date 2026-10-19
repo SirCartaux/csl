@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.2 — 2026-10-19
 
 ### Clipboard
 - Add a persistent 30 MB clipboard history for text, links, images and files, with deduplication, pinning, filtering and source-app metadata.
@@ -11,8 +11,6 @@
 - Coalesce rapid query edits with a short settle window. The result list stays stable while typing instead of rebuilding for every letter, and stale-row actions stay blocked until the new query is displayed.
 - The amber `>` prompt now gives a smaller pop and amber glow on every text edit, in a dedicated centre-anchored sublayer.
 - Start apps, files and URLs asynchronously. The selected row turns green, presses in, shows a pixel “LAUNCHING” chase and a connected rectangular green frame with a uniform edge thickness. Three thin rectangular outline impulses radiate outward with ease-out while CSL waits for the launch to complete.
-
-## 0.6.2 — 2026-10-19
 
 - Keep results visible across empty intermediate search batches; block actions on retained results from an older query.
 - Track both index and Spotlight completion before reporting an empty search.

@@ -74,25 +74,29 @@ final class ClipboardHeaderButton: NSView {
         PixelDraw.fill(bounds, fill)
         PixelDraw.frame(bounds.insetBy(dx: 0.5, dy: 0.5), thickness: max(1, Theme.ls(1)), color: border, notch: Theme.ls(2))
 
-        let glyph = PixelGlyph.clipboard.image(size: Theme.ls(11), color: color)
-        glyph.draw(in: CGRect(
-            x: Theme.ls(7),
-            y: (bounds.height - Theme.ls(11)) / 2,
-            width: Theme.ls(11),
-            height: Theme.ls(11)
-        ))
+        let label = "CLIP" as NSString
+        let font = Theme.launcherDisplay(6.5)
+        let textSize = label.size(withAttributes: [.font: font])
+        let glyphSize = Theme.ls(11)
+        let gap = Theme.ls(4)
+        let groupWidth = glyphSize + gap + textSize.width
+        let startX = floor((bounds.width - groupWidth) / 2)
+        let glyphY = floor((bounds.height - glyphSize) / 2)
+
+        let glyph = PixelGlyph.clipboard.image(size: glyphSize, color: color)
+        glyph.draw(in: CGRect(x: startX, y: glyphY, width: glyphSize, height: glyphSize))
 
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
-        ("CLIP" as NSString).draw(
+        label.draw(
             in: CGRect(
-                x: Theme.ls(22),
-                y: (bounds.height - Theme.ls(10)) / 2 + Theme.ls(1),
-                width: bounds.width - Theme.ls(27),
-                height: Theme.ls(12)
+                x: startX + glyphSize + gap,
+                y: floor((bounds.height - textSize.height) / 2),
+                width: textSize.width + Theme.ls(1),
+                height: textSize.height
             ),
             withAttributes: [
-                .font: Theme.launcherDisplay(6.5),
+                .font: font,
                 .foregroundColor: color,
                 .paragraphStyle: paragraph
             ]
