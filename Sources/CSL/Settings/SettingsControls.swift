@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 // MARK: - Button
 
@@ -23,6 +24,7 @@ class PixelButton: NSButton {
         self.action = action
         isBordered = false
         focusRingType = .none
+        wantsLayer = true
         setButtonType(.momentaryChange)
         font = Theme.display(9.5)
     }
@@ -40,6 +42,17 @@ class PixelButton: NSButton {
 
     override func highlight(_ flag: Bool) {
         super.highlight(flag)
+        if InteractionMotion.enabled, let layer {
+            let press = CAKeyframeAnimation(keyPath: "transform.scale")
+            press.values = flag ? [1, 0.97] : [0.97, 1.012, 1]
+            press.duration = flag ? 0.10 : 0.22
+            press.fillMode = flag ? .forwards : .removed
+            press.isRemovedOnCompletion = !flag
+            press.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer.add(press, forKey: "buttonPress")
+        } else {
+            layer?.removeAnimation(forKey: "buttonPress")
+        }
         needsDisplay = true
     }
 

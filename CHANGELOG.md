@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-10-19
+
+- Replace the pixel-mask reveal with a short, interruptible zoom/lift/fade.
+- Add pointer-following amber light, gliding hover/selection highlights, input light pulses and pooled click ripples.
+- Give new results a subtle entrance and settings buttons tactile press feedback.
+- Reuse a fixed effect layer pool, bound pointer processing and stop transient effects when hidden. Respect macOS Reduce Motion.
+- Restore interaction effects when reopening during a close transition.
+
 ## 0.5.2 — 2026-10-19
 
 - Route trackpad pinch through a native root-level magnification recognizer with indirect touch support, preserving search-field focus.

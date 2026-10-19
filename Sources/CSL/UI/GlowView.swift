@@ -44,12 +44,13 @@ final class GlowView: NSView {
     func startPulse() {
         guard let layer else { return }
         layer.removeAnimation(forKey: "pulse")
-        layer.opacity = 1
+        layer.opacity = 0.72
+        guard InteractionMotion.enabled else { return }
 
         let animation = CABasicAnimation(keyPath: "opacity")
-        animation.fromValue = 1.0
-        animation.toValue = 0.58
-        animation.duration = 1.75
+        animation.fromValue = 0.82
+        animation.toValue = 0.56
+        animation.duration = 2.8
         animation.autoreverses = true
         animation.repeatCount = .infinity
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)

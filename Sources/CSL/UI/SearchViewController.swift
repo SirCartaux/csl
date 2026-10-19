@@ -21,7 +21,7 @@ final class SearchViewController: NSViewController {
     private var pinchAnchor: NSPoint?
     private lazy var graphPinch = NSMagnificationGestureRecognizer(target: self, action: #selector(handleGraphPinch(_:)))
     private let calculatorHint = CalculatorHintView(frame: .zero)
-    private let rootReveal = PixelRevealGrid()
+    private let interactionEffects = InteractionEffectsView(frame: .zero)
     private var pixelOpenWork: DispatchWorkItem?
     private var pixelCloseWork: DispatchWorkItem?
     private var pixelRevealActive = false
@@ -50,29 +50,12 @@ final class SearchViewController: NSViewController {
     var isPreviewing: Bool { previewIsOpen }
 
     var animationsEnabled: Bool {
-        ProcessInfo.processInfo.environment["CSL_NO_PIXEL_ANIMATION"] != "1"
+        InteractionMotion.enabled
     }
 
-    private var pixelCellSize: CGFloat {
-        max(6, 10 * Theme.launcherScale)
-    }
-
-    /// 1.0 is the old timing; lower settings are slower (longer delays).
+    /// Retain the saved speed preference with the new transition durations.
     private var pixelTimeScale: Double {
-        SettingsStore.pixelAnimationBaseScale / SettingsStore.shared.pixelAnimationSpeed
-    }
-
-    private var fieldCenter: CGPoint {
-        CGPoint(x: searchField.frame.midX, y: searchField.frame.midY)
-    }
-
-    /// The mask layer's geometry is flipped relative to the root layer, so
-    /// mirror Y for the radial wave.
-    private var radialMaskCenter: CGPoint {
-        CGPoint(
-            x: fieldCenter.x,
-            y: max(0, rootView.bounds.height - fieldCenter.y)
-        )
+        1 / SettingsStore.shared.pixelAnimationSpeed
     }
 
     func dismissQuickLook() {
@@ -130,6 +113,19 @@ final class SearchViewController: NSViewController {
         graphPinch.delegate = self
         graphPinch.delaysMagnificationEvents = true
         rootView.addGestureRecognizer(graphPinch)
+        rootView.addSubview(interactionEffects)
+        interactionEffects.onPointerMove = { [weak self] point in
+            guard let self, let point, !self.rootView.graphActive else {
+                self?.interactionEffects.setHover(nil)
+                return
+            }
+            let local = self.tableView.convert(point, from: self.rootView)
+            let row = self.tableView.row(at: local)
+            guard self.results.indices.contains(row), Layout.listRect(in:self.view.bounds).contains(point) else {
+                self.interactionEffects.setHover(nil); return
+            }
+            self.interactionEffects.setHover(self.rootView.convert(self.tableView.rect(ofRow:row),from:self.tableView))
+        }
 
         engine?.onIndexProgress = { [weak self] scanned, total, done in
             guard let self else { return }
@@ -175,6 +171,7 @@ final class SearchViewController: NSViewController {
         let fieldRect = Layout.fieldRect(in: bounds)
 
         glowView.frame = view.bounds
+        interactionEffects.frame = view.bounds
         resizeHandle.frame = view.bounds
         scrollView.frame = listRect
         functionGraph.frame = listRect
@@ -193,6 +190,7 @@ final class SearchViewController: NSViewController {
             column.width = listRect.width
         }
         resizeTable()
+        updateInteractionSelection(animated: false)
         view.window?.invalidateCursorRects(for: resizeHandle)
     }
 
@@ -335,111 +333,77 @@ final class SearchViewController: NSViewController {
     }
 
     func startGlow() {
+        interactionEffects.activate()
+        updateInteractionSelection(animated: false)
         glowView.startPulse()
     }
 
-    // MARK: - Pixel reveal
+    // MARK: - Launcher transitions
 
-    /// Build the masks during panel pre-warm so the hotkey path never creates
-    /// layers while the user is waiting.
+    /// Prepare backing layers before the hotkey presentation path.
     func prewarmPixelAnimations() {
-        guard animationsEnabled else { return }
         rootView.wantsLayer = true
-        scrollView.wantsLayer = true
-        guard rootView.bounds.width > 1, rootView.bounds.height > 1 else { return }
-        rootReveal.prewarm(
-            size: rootView.bounds.size,
-            cellSize: pixelCellSize,
-            style: .radial(center: radialMaskCenter)
-        )
+        interactionEffects.needsLayout = true
     }
 
-    /// Hide the content behind a pixel mask before the panel is ordered front.
     func preparePixelOpen() {
-        guard animationsEnabled else { return }
         cancelPixelAnimations()
-        rootView.wantsLayer = true
-        let size = rootView.bounds.size
-        guard size.width > 1, size.height > 1, let layer = rootView.layer else { return }
-        rootReveal.prepare(
-            on: layer,
-            size: size,
-            cellSize: pixelCellSize,
-            style: .radial(center: radialMaskCenter),
-            visible: false
-        )
+        guard animationsEnabled, let layer = rootView.layer else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        layer.opacity = 0
+        CATransaction.commit()
         pixelRevealActive = true
     }
 
-    /// Start the pixel wave only after the panel is key and the field focused.
     func startPixelOpen() {
-        guard animationsEnabled, pixelRevealActive, let layerRoot = rootView.layer else { return }
-        let total = rootReveal.animateOpen(
-            on: layerRoot,
-            spread: 0.12 * pixelTimeScale,
-            jitter: 0.05 * pixelTimeScale,
-            duration: 0.001 * pixelTimeScale
-        )
-        pixelOpenWork?.cancel()
-        let work = DispatchWorkItem { [weak self, weak layerRoot] in
-            guard let self, let layerRoot else { return }
-            self.rootReveal.clear(from: layerRoot)
-            self.pixelRevealActive = false
-        }
+        guard animationsEnabled, pixelRevealActive, let layer = rootView.layer else { return }
+        let duration = min(0.48, max(0.12, 0.24*pixelTimeScale))
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        layer.opacity = 1
+        CATransaction.commit()
+        InteractionMotion.appear(on:layer,duration:duration)
+        let work = DispatchWorkItem { [weak self] in self?.pixelRevealActive = false }
         pixelOpenWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + total, execute: work)
+        DispatchQueue.main.asyncAfter(deadline:.now()+duration,execute:work)
     }
 
-    /// Shrink the panel from the outside in, then hand control back to the
-    /// window controller.
     func animatePixelClose(completion: @escaping () -> Void) {
-        guard animationsEnabled, view.window?.isVisible == true else {
-            completion()
-            return
+        guard animationsEnabled, view.window?.isVisible == true, let layer = rootView.layer else {
+            completion(); return
         }
         cancelPixelAnimations()
         pixelClosing = true
-        rootView.wantsLayer = true
-        let size = rootView.bounds.size
-        guard size.width > 1, size.height > 1, let layer = rootView.layer else {
-            pixelClosing = false
-            completion()
-            return
-        }
-        rootReveal.prepare(
-            on: layer,
-            size: size,
-            cellSize: pixelCellSize,
-            style: .radial(center: radialMaskCenter),
-            visible: true
-        )
-        let total = rootReveal.animateClose(
-            on: layer,
-            spread: 0.12 * pixelTimeScale,
-            jitter: 0.05 * pixelTimeScale,
-            duration: 0.001 * pixelTimeScale
-        )
+        let duration = min(0.28, max(0.07, 0.14*pixelTimeScale))
+        InteractionMotion.disappear(on:layer,duration:duration)
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.pixelClosing = false
-            self.pixelRevealActive = false
+            self?.pixelClosing = false
+            self?.pixelRevealActive = false
             completion()
         }
         pixelCloseWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + total, execute: work)
+        DispatchQueue.main.asyncAfter(deadline:.now()+duration,execute:work)
     }
 
     func cancelPixelAnimations() {
-        pixelOpenWork?.cancel()
-        pixelOpenWork = nil
-        pixelCloseWork?.cancel()
-        pixelCloseWork = nil
+        pixelOpenWork?.cancel(); pixelOpenWork = nil
+        pixelCloseWork?.cancel(); pixelCloseWork = nil
         cancelResultGlows()
-        if let layer = rootView.layer {
-            rootReveal.clear(from: layer)
-        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        rootView.layer?.removeAnimation(forKey:"launcherAppear")
+        rootView.layer?.removeAnimation(forKey:"launcherDisappear")
+        rootView.layer?.opacity = 1
+        rootView.layer?.mask = nil
+        CATransaction.commit()
         pixelRevealActive = false
         pixelClosing = false
+    }
+
+    private func updateInteractionSelection(animated: Bool) {
+        guard !rootView.graphActive, results.indices.contains(selectedIndex) else {
+            interactionEffects.setSelection(nil,animated:false); return
+        }
+        let rect = rootView.convert(tableView.rect(ofRow:selectedIndex),from:tableView)
+        interactionEffects.setSelection(rect,animated:animated)
     }
 
     /// Every visibly new result row gets a small amber glow that fades out
@@ -470,6 +434,14 @@ final class SearchViewController: NSViewController {
         for index in visibleIndices {
             guard let rowView = tableView.rowView(atRow: index, makeIfNecessary: true) else { continue }
             guard rowView.bounds.width > 1, rowView.bounds.height > 1 else { continue }
+            rowView.wantsLayer = true
+            if let layer = rowView.layer {
+                let entrance = CABasicAnimation(keyPath:"transform.translation.y")
+                entrance.fromValue = Theme.ls(5); entrance.toValue = 0
+                entrance.duration = 0.20
+                entrance.timingFunction = CAMediaTimingFunction(name:.easeOut)
+                layer.add(entrance,forKey:"resultEntrance")
+            }
 
             let glow = ResultGlowView(frame: rowView.frame)
             glow.wantsLayer = true
@@ -527,6 +499,7 @@ final class SearchViewController: NSViewController {
 
     func stopGlow() {
         pinchAnchor = nil
+        interactionEffects.stop()
         functionGraph.stopInteraction()
         glowView.stopPulse()
     }
@@ -650,6 +623,7 @@ final class SearchViewController: NSViewController {
 
         let newRows = results.indices.filter { !previousIDs.contains(results[$0].id) }
         animateNewRows(newRows)
+        updateInteractionSelection(animated: true)
     }
 
     // MARK: - Selection
@@ -663,6 +637,7 @@ final class SearchViewController: NSViewController {
         selectedIndex = next
         tableView.reloadData()
         tableView.scrollRowToVisible(selectedIndex)
+        updateInteractionSelection(animated: true)
     }
 
     private func chooseSelected(reveal: Bool) {
@@ -682,6 +657,7 @@ final class SearchViewController: NSViewController {
         tableView.reloadData()
         focus()
         tableView.scrollRowToVisible(row)
+        updateInteractionSelection(animated: true)
         Log.debug("row selected: \(row)")
     }
 
@@ -699,6 +675,7 @@ final class SearchViewController: NSViewController {
         selectedIndex = 0
         tableView.reloadData()
         tableView.scrollRowToVisible(0)
+        updateInteractionSelection(animated: true)
     }
 
     // MARK: - Quick Look
@@ -722,8 +699,22 @@ final class SearchViewController: NSViewController {
 
     private func installQuickLookMonitor() {
         guard quickLookMonitor == nil else { return }
-        quickLookMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        quickLookMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .scrollWheel]) { [weak self] event in
             guard let self else { return event }
+            if event.type != .keyDown {
+                if event.window === self.view.window, self.view.window?.isVisible == true {
+                    if event.type == .leftMouseDown {
+                        self.interactionEffects.click(at:self.rootView.convert(event.locationInWindow,from:nil))
+                    } else {
+                        self.interactionEffects.setHover(nil)
+                        DispatchQueue.main.async { [weak self] in self?.updateInteractionSelection(animated:false) }
+                    }
+                }
+                return event
+            }
+            if self.view.window?.isKeyWindow == true {
+                self.interactionEffects.inputPulse()
+            }
 
             // The launcher has no main Edit menu, so handle ⌘A explicitly for
             // the search field's field editor.
@@ -946,6 +937,7 @@ final class SearchViewController: NSViewController {
     func flashStatus(_ text: String) {
         statusWorkItem?.cancel()
         rootView.statusOverride = text
+        interactionEffects.inputPulse(success:true)
         let work = DispatchWorkItem { [weak self] in
             self?.rootView.statusOverride = nil
         }
@@ -1047,6 +1039,8 @@ extension SearchViewController: NSTextFieldDelegate {
         userNavigated = false
         userScrolledResults = false
         selectedIndex = 0
+        interactionEffects.inputPulse()
+        interactionEffects.setHover(nil)
         rootView.query = searchField.stringValue
         rootView.graphActive = WebSearchProvider.query(from: searchField.stringValue) == nil
             && FunctionExpression.body(of: searchField.stringValue) != nil
@@ -1067,6 +1061,7 @@ extension SearchViewController: NSTextFieldDelegate {
         }
         updateCalculatorHint()
         refreshWindowSize()
+        updateInteractionSelection(animated: false)
         rootView.needsDisplay = true
     }
 

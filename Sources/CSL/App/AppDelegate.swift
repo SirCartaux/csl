@@ -258,9 +258,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             SettingsWindowController.shared.close(restoreFocus: false)
         }
         if isClosing {
-            // Re-open while the close wave is still running: keep the panel
-            // where it is, drop the mask and restore focus immediately.
+            // Interrupt closing and resume interaction immediately.
             viewController.cancelPixelAnimations()
+            viewController.startGlow()
             isClosing = false
         }
         guard !panel.isVisible else {
@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         viewController.prepareForPresentation()
         position(panel, on: screen)
-        // Hide the content behind the pixel mask before the panel appears.
+        // Prepare the entrance before the panel appears.
         viewController.preparePixelOpen()
         // Deliberately no NSApp.activate(): the non-activating panel becomes
         // key while the previous app stays frontmost, Spotlight-style.

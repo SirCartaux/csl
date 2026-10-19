@@ -72,7 +72,7 @@ window, field editor and focus is more direct in AppKit.
 - **Real settings window** (search `CSL SETTINGS`, or use the menu bar): index folders with progress, percentage and ETA; ignore folders and extensions; add websites with automatically fetched favicons.
 - **Menu bar item:** open, settings, launch at login, keyboard shortcuts, quit.
 - **Pixel UI:** Silkscreen, hard edges, notched corners, hard shadows and an animated amber glow at 0% idle CPU.
-- **Reveal effect:** fixed-size pixels pop in without a cross-fade — opening spreads from the search bar and closing removes pixels from the outside in. New result rows get a small amber glow that fades out quickly. GPU-composited, pre-warmed, zero cost to the search path; open/close speed is adjustable in **Settings → Animation** (0,25×–2,0×, default 1,00×).
+- **Motion and light:** a soft zoom/fade opens and closes the launcher. A warm light follows the pointer, selection and hover highlights glide between rows, typing lights the input edge, and clicks leave a brief ring. New results arrive with a gentle lift and glow; settings buttons have a tactile press. Effects use reusable Core Animation layers, pause when hidden, and respect macOS Reduce Motion.
 - **German and English search keywords** (`papierkorb`, `einstellungen`, `settings`, …), including localized app names such as `Festplattendienstprogramm` → **Disk Utility**.
 
 ---
@@ -83,8 +83,8 @@ window, field editor and focus is more direct in AppKit.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.5.2.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.5.2.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.6.0.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.6.0.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
@@ -215,8 +215,8 @@ run; default exclusions below.
 ### Animation
 
 A speed slider from **0,25× (slow)** to **2,0× (fast)**, default **1,00×**.
-It changes the open/close pixel wave without touching search performance. The
-launcher pixels still jump hard from 0 to 100 %.
+It adjusts the short open/close zoom and fade. Pointer, keyboard and click feedback
+share a restrained amber light treatment. macOS Reduce Motion disables movement.
 
 The small **ERGEBNIS-GLOW** for new result rows has its own controls:
 **on/off**, **intensity** (default 0,55) and **fade time** (default 0,30 s).

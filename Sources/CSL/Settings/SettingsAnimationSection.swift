@@ -138,7 +138,7 @@ final class AnimationSection: SettingsSection {
     override func draw(_ dirtyRect: NSRect) {
         drawHeader(
             title: "ANIMATION",
-            subtitle: "PIXEL, GLOW UND GESCHWINDIGKEIT."
+            subtitle: "BEWEGUNG, LICHT UND GESCHWINDIGKEIT."
         )
 
         drawText("GESCHWINDIGKEIT", x: 0, y: 64, width: 220, font: 8.5, color: Theme.textDim)
@@ -151,11 +151,11 @@ final class AnimationSection: SettingsSection {
 
         PixelDraw.hLine(x: 0, y: 176, width: bounds.width, color: Theme.line)
 
-        drawText("DIE PIXEL SPRINGEN WEITERHIN HART VON 0 AUF 100 %, OHNE FADE.",
+        drawText("SANFTER ZOOM UND FADE BEIM OEFFNEN UND SCHLIESSEN.",
                  x: 0, y: 196, width: bounds.width, font: 8, color: Theme.textFaint)
         drawText("NEUE ERGEBNISSE BEKOMMEN EINEN KURZEN GLOW, NUR DIE NEUEN ZEILEN.",
                  x: 0, y: 214, width: bounds.width, font: 8, color: Theme.textFaint)
-        drawText("DER STANDARD ENTSPRICHT DEM BISHERIGEN TIMING.",
+        drawText("REDUZIERTE BEWEGUNG IN MACOS WIRD BERUECKSICHTIGT.",
                  x: 0, y: 232, width: bounds.width, font: 8, color: Theme.textFaint)
 
         drawText("1,00X IST DER STANDARD.", x: 194, y: 284, width: bounds.width - 194, font: 8, color: Theme.textFaint)
