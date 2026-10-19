@@ -440,7 +440,7 @@ final class GeneralSection: SettingsSection {
         )
 
         drawText("ÜBER", x: 0, y: 394, width: 200, font: 8.5, color: Theme.textDim)
-        drawText("CSL 0.5.2 - COMMAND SEARCH LAUNCHER", x: 0, y: 414, width: bounds.width, font: 8, color: Theme.textFaint)
+        drawText("CSL 0.6.2 - COMMAND SEARCH LAUNCHER", x: 0, y: 414, width: bounds.width, font: 8, color: Theme.textFaint)
         drawText("SWIFT + APPKIT / SILKSCREEN (OFL) / LOKAL, KEINE TELEMETRIE", x: 0, y: 430, width: bounds.width, font: 8, color: Theme.textFaint)
     }
 

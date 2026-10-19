@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Launcher
+- Clear stale result rows as soon as the query changes, instead of briefly holding the previous query's hits while the new search starts.
+- The amber `>` prompt now gives a tiny pop and amber glow on every text edit.
+
 ## 0.6.2 — 2026-10-19
 
 - Keep results visible across empty intermediate search batches; block actions on retained results from an older query.

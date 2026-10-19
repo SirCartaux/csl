@@ -17,6 +17,7 @@ final class SearchViewController: NSViewController {
     private let resizeHandle = ResizeHandleView()
     private let placeholderView = SearchPlaceholderView()
     private let searchActivity = PixelActivityView()
+    private let searchPrompt = SearchPromptView(frame: .zero)
     private let functionGraph = FunctionGraphView()
     private var pinchAnchor: NSPoint?
     private lazy var graphPinch = NSMagnificationGestureRecognizer(target: self, action: #selector(handleGraphPinch(_:)))
@@ -87,6 +88,7 @@ final class SearchViewController: NSViewController {
         rootView.addSubview(scrollView)
         rootView.addSubview(searchField)
         rootView.addSubview(placeholderView)
+        rootView.addSubview(searchPrompt)
         rootView.addSubview(glowView)
 
         resizeHandle.frame = rootView.bounds
@@ -188,6 +190,15 @@ final class SearchViewController: NSViewController {
         )
         placeholderView.frame = searchField.frame
         searchActivity.frame = Layout.footerActivityRect(in: bounds)
+        let field = Layout.fieldRect(in: bounds)
+        let promptUnit = Theme.ls(3)
+        let promptPadding = Theme.ls(4)
+        searchPrompt.frame = CGRect(
+            x: field.minX + Theme.ls(20) - promptPadding,
+            y: field.minY + Theme.ls(20) - promptPadding,
+            width: promptUnit * 5 + promptPadding * 2,
+            height: promptUnit * 5 + promptPadding * 2
+        )
         updateCalculatorHint()
 
         if let column = tableView.tableColumns.first {
@@ -323,6 +334,7 @@ final class SearchViewController: NSViewController {
         calculatorCopyText = nil
         rootView.calculatorActive = false
         rootView.graphActive = false
+        searchPrompt.stop()
         functionGraph.stopInteraction()
         functionGraph.isHidden = true
         scrollView.isHidden = false
@@ -572,7 +584,8 @@ final class SearchViewController: NSViewController {
         guard !rootView.graphActive else { return }
         // An empty intermediate provider batch is not a new empty result set.
         // Keep the previous frame intact until replacements or a final miss arrive.
-        if results.isEmpty, isSearching, !self.results.isEmpty {
+        if results.isEmpty, isSearching, !self.results.isEmpty,
+           displayedQuery == searchField.stringValue {
             rootView.isSearching = true
             return
         }
@@ -1071,6 +1084,7 @@ extension SearchViewController: NSTextFieldDelegate {
         selectedIndex = 0
         interactionEffects.inputPulse()
         interactionEffects.setHover(nil)
+        searchPrompt.pulse()
         rootView.query = searchField.stringValue
         rootView.graphActive = WebSearchProvider.query(from: searchField.stringValue) == nil
             && FunctionExpression.body(of: searchField.stringValue) != nil

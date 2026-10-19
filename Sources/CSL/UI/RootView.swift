@@ -189,8 +189,7 @@ final class RootView: NSView {
     private func drawSearchRow(panel: CGRect) {
         let rect = Layout.fieldRect(in: bounds)
 
-        // prompt
-        PixelDraw.chevron(x: rect.minX + Theme.ls(20), y: rect.minY + Theme.ls(20), unit: Theme.ls(3), color: Theme.accent)
+        // The prompt chevron is a SearchPromptView so it can pop and glow.
 
         // baseline rule under the query
         PixelDraw.hLine(x: rect.minX, y: rect.maxY - Theme.ls(1), width: rect.width, color: Theme.line, thickness: max(1, Theme.ls(1)))
