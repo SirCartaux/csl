@@ -69,7 +69,7 @@ final class ClipboardHeaderButton: NSView {
             ? Theme.accent.withAlphaComponent(0.14)
             : (hovered ? Theme.bgSelected : Theme.bgRaised)
         let border = active || hovered ? Theme.accent : Theme.border
-        let color = active ? Theme.accent : Theme.textDim
+        let color = active || hovered ? Theme.accent : Theme.textDim
 
         PixelDraw.fill(bounds, fill)
         PixelDraw.frame(bounds.insetBy(dx: 0.5, dy: 0.5), thickness: max(1, Theme.ls(1)), color: border, notch: Theme.ls(2))
@@ -84,7 +84,7 @@ final class ClipboardHeaderButton: NSView {
 
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
-        ("CLIPBOARD" as NSString).draw(
+        ("CLIP" as NSString).draw(
             in: CGRect(
                 x: Theme.ls(22),
                 y: (bounds.height - Theme.ls(10)) / 2 + Theme.ls(1),

@@ -49,7 +49,7 @@ enum Layout {
         let keyText = "CMD + SPACE"
         let keySize = (keyText as NSString).size(withAttributes: [.font: Theme.launcherDisplay(8)])
         let capX = header.maxX - keySize.width - Theme.ls(20)
-        let width = Theme.ls(76)
+        let width = Theme.ls(52)
         let height = Theme.ls(18)
         return CGRect(
             x: capX - Theme.ls(10) - width,
@@ -159,28 +159,37 @@ final class RootView: NSView {
         PixelDraw.fill(rect, Theme.bgRaised)
         PixelDraw.hLine(x: rect.minX, y: rect.maxY - Theme.ls(1), width: rect.width, color: Theme.line, thickness: max(1, Theme.ls(1)))
 
-        PixelDraw.fill(CGRect(x: rect.minX + Theme.ls(18), y: rect.minY + Theme.ls(14), width: Theme.ls(4), height: Theme.ls(4)), Theme.accent)
+        PixelDraw.fill(
+            CGRect(x: rect.minX + Theme.ls(18), y: rect.midY - Theme.ls(2), width: Theme.ls(4), height: Theme.ls(4)),
+            Theme.accent
+        )
 
         let logoAttributes: [NSAttributedString.Key: Any] = [
             .font: Theme.launcherDisplayBold(15),
             .foregroundColor: Theme.accent
         ]
         let logoSize = ("CSL" as NSString).size(withAttributes: logoAttributes)
-        ("CSL" as NSString).draw(
-            in: CGRect(x: rect.minX + Theme.ls(30), y: rect.minY + Theme.ls(8), width: logoSize.width + Theme.ls(4), height: Theme.ls(18)),
-            withAttributes: logoAttributes
+        let logoRect = CGRect(
+            x: rect.minX + Theme.ls(30),
+            y: floor(rect.midY - logoSize.height / 2),
+            width: logoSize.width + Theme.ls(4),
+            height: logoSize.height
         )
+        ("CSL" as NSString).draw(in: logoRect, withAttributes: logoAttributes)
+
+        let subtitleAttributes: [NSAttributedString.Key: Any] = [
+            .font: Theme.launcherDisplay(7.5),
+            .foregroundColor: Theme.textFaint
+        ]
+        let subtitleSize = ("COMMAND SEARCH LAUNCHER" as NSString).size(withAttributes: subtitleAttributes)
         ("COMMAND SEARCH LAUNCHER" as NSString).draw(
             in: CGRect(
                 x: rect.minX + Theme.ls(30) + logoSize.width + Theme.ls(10),
-                y: rect.minY + Theme.ls(13),
+                y: floor(rect.midY - subtitleSize.height / 2),
                 width: Theme.ls(260),
-                height: Theme.ls(12)
+                height: subtitleSize.height
             ),
-            withAttributes: [
-                .font: Theme.launcherDisplay(7.5),
-                .foregroundColor: Theme.textFaint
-            ]
+            withAttributes: subtitleAttributes
         )
 
         // hotkey hint on the right
