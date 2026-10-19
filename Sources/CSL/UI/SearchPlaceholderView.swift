@@ -23,7 +23,7 @@ final class SearchPlaceholderView: NSView {
         let size = (text as NSString).size(withAttributes: attributes)
         let rect = CGRect(
             x: leftInset,
-            y: (bounds.height - size.height) / 2,
+            y: (bounds.height - size.height) / 2 - Theme.ls(3),
             width: max(1, bounds.width - leftInset),
             height: size.height
         )

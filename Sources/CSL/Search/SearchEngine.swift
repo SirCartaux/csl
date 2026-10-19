@@ -30,6 +30,7 @@ final class SearchEngine {
     private var streamedFileResults: [SearchResult] = []
     private var fileResults: [SearchResult] = []
     private var fileSearching = false
+    private var indexSearching = false
     private var started: CFTimeInterval = 0
     private var loggedFirstUpdate = false
 
@@ -60,12 +61,14 @@ final class SearchEngine {
         cachedFileResults = []
         streamedFileResults = []
         fileSearching = !trimmed.isEmpty
+        indexSearching = !trimmed.isEmpty
         started = CACurrentMediaTime()
         loggedFirstUpdate = false
 
         guard !trimmed.isEmpty else {
             instantResults = commandProvider.allResults()
             fileSearching = false
+            indexSearching = false
             emit()
             return
         }
@@ -73,6 +76,7 @@ final class SearchEngine {
         if let google = WebSearchProvider.result(for: trimmed) {
             instantResults = [google]
             fileSearching = false
+            indexSearching = false
             emit()
             return
         }
@@ -106,6 +110,7 @@ final class SearchEngine {
         cachedFileResults = []
         streamedFileResults = []
         fileSearching = false
+        indexSearching = false
         onIndexProgress?(0, 0, true)
     }
 
@@ -134,6 +139,7 @@ final class SearchEngine {
     }
 
     private func searchIndex(for query: String, generation: Int) {
+        indexSearching = true
         streamUpdate?.cancel(); streamUpdate = nil
         streamedFileResults = []
         streamedIDs.removeAll(keepingCapacity: true)
@@ -158,6 +164,7 @@ final class SearchEngine {
         }) { [weak self] results in
             guard let self, self.generation == generation else { return }
             self.streamUpdate?.cancel(); self.streamUpdate = nil
+            self.indexSearching = false
             self.onIndexProgress?(total, total, true)
 
             // Replace the cached first screenful with the complete, sorted
@@ -233,7 +240,7 @@ final class SearchEngine {
             ))
         }
 
-        delegate?.searchEngine(self, didUpdate: merged, isSearching: fileSearching)
+        delegate?.searchEngine(self, didUpdate: merged, isSearching: fileSearching || indexSearching)
     }
 
     private static func ranking(_ lhs: SearchResult, _ rhs: SearchResult) -> Bool {

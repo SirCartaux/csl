@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2 — 2026-10-19
+
+- Keep results visible across empty intermediate search batches; block actions on retained results from an older query.
+- Track both index and Spotlight completion before reporting an empty search.
+- Keep list height stable while results arrive, update unchanged rows in place, and avoid repeated entrance effects during rapid typing.
+- Move the search placeholder up three scaled pixels for optical centering.
+
 ## 0.6.1 — 2026-10-19
 
 - Add a CSL-only System / Always On / Off motion preference with visible effective status.

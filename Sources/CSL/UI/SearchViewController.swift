@@ -21,6 +21,10 @@ final class SearchViewController: NSViewController {
     private var pinchAnchor: NSPoint?
     private lazy var graphPinch = NSMagnificationGestureRecognizer(target: self, action: #selector(handleGraphPinch(_:)))
     private let calculatorHint = CalculatorHintView(frame: .zero)
+    private var displayedQuery = ""
+    private var reservedResultRows = 0
+    private var lastQueryEdit: CFTimeInterval = 0
+    private var resultsAreCurrent: Bool { displayedQuery == searchField.stringValue }
     private let interactionEffects = InteractionEffectsView(frame: .zero)
     private var pixelOpenWork: DispatchWorkItem?
     private var pixelCloseWork: DispatchWorkItem?
@@ -323,6 +327,8 @@ final class SearchViewController: NSViewController {
         functionGraph.isHidden = true
         scrollView.isHidden = false
         results = []
+        displayedQuery = ""
+        reservedResultRows = 0
         selectedIndex = 0
         rootView.query = ""
         rootView.resultCount = 0
@@ -529,7 +535,7 @@ final class SearchViewController: NSViewController {
     private var listHeight: CGFloat {
         if rootView.graphActive { return Theme.ls(340) }
         guard !results.isEmpty else { return Theme.emptyListHeight }
-        let rows = min(results.count, Theme.maxRows)
+        let rows = max(min(results.count, Theme.maxRows), reservedResultRows)
         return max(Theme.emptyListHeight, CGFloat(rows) * Theme.rowHeight)
     }
 
@@ -564,6 +570,15 @@ final class SearchViewController: NSViewController {
 
     func apply(results: [SearchResult], isSearching: Bool) {
         guard !rootView.graphActive else { return }
+        // An empty intermediate provider batch is not a new empty result set.
+        // Keep the previous frame intact until replacements or a final miss arrive.
+        if results.isEmpty, isSearching, !self.results.isEmpty {
+            rootView.isSearching = true
+            return
+        }
+        displayedQuery = searchField.stringValue
+        let rowCount = min(results.count, Theme.maxRows)
+        reservedResultRows = isSearching ? max(reservedResultRows, rowCount) : rowCount
         let previousID: String? = self.results.indices.contains(selectedIndex)
             ? self.results[selectedIndex].id
             : nil
@@ -595,7 +610,18 @@ final class SearchViewController: NSViewController {
         }
 
         resizeTable()
-        tableView.reloadData()
+        if resultsChanged {
+            tableView.reloadData()
+        } else {
+            // Same identities: update highlights/metadata without recycling rows.
+            let visible = tableView.rows(in: tableView.visibleRect)
+            if visible.location != NSNotFound {
+                for row in visible.location..<min(NSMaxRange(visible), results.count) {
+                    (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? ResultRowView)?
+                        .configure(with: results[row], selected: row == selectedIndex)
+                }
+            }
+        }
         if !results.isEmpty {
             // While results stream in, keep the user's scroll position (or the
             // selected row when navigating) instead of jumping back to the top.
@@ -622,14 +648,16 @@ final class SearchViewController: NSViewController {
         }
 
         let newRows = results.indices.filter { !previousIDs.contains(results[$0].id) }
-        animateNewRows(newRows)
+        if CACurrentMediaTime() - lastQueryEdit > 0.12 {
+            animateNewRows(newRows)
+        }
         updateInteractionSelection(animated: true)
     }
 
     // MARK: - Selection
 
     private func moveSelection(by delta: Int) {
-        guard !rootView.graphActive, !results.isEmpty else { return }
+        guard resultsAreCurrent, !rootView.graphActive, !results.isEmpty else { return }
         let next = max(0, min(results.count - 1, selectedIndex + delta))
         guard next != selectedIndex else { return }
         userNavigated = true
@@ -641,14 +669,14 @@ final class SearchViewController: NSViewController {
     }
 
     private func chooseSelected(reveal: Bool) {
-        guard !rootView.graphActive else { return }
+        guard resultsAreCurrent, !rootView.graphActive else { return }
         guard results.indices.contains(selectedIndex) else { return }
         Log.debug("open result: \(results[selectedIndex].title)")
         onChoose?(results[selectedIndex], reveal)
     }
 
     @objc private func rowClicked() {
-        guard !suppressClick else { return }
+        guard resultsAreCurrent, !suppressClick else { return }
         let row = tableView.clickedRow
         guard results.indices.contains(row) else { return }
         selectedIndex = row
@@ -662,7 +690,7 @@ final class SearchViewController: NSViewController {
     }
 
     private func openResult(at row: Int) {
-        guard results.indices.contains(row) else { return }
+        guard resultsAreCurrent, results.indices.contains(row) else { return }
         selectedIndex = row
         tableView.reloadData()
         Log.debug("row double-clicked: \(row)")
@@ -670,7 +698,7 @@ final class SearchViewController: NSViewController {
     }
 
     private func beginResultsNavigation() {
-        guard !rootView.graphActive, !results.isEmpty else { return }
+        guard resultsAreCurrent, !rootView.graphActive, !results.isEmpty else { return }
         isNavigatingResults = true
         selectedIndex = 0
         tableView.reloadData()
@@ -681,7 +709,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Quick Look
 
     private func selectedFileURL() -> URL? {
-        guard results.indices.contains(selectedIndex) else { return nil }
+        guard resultsAreCurrent, results.indices.contains(selectedIndex) else { return nil }
         let result = results[selectedIndex]
         switch result.kind {
         case .file:
@@ -823,7 +851,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Context menu
 
     private func makeContextMenu(for row: Int) -> NSMenu? {
-        guard results.indices.contains(row) else { return nil }
+        guard resultsAreCurrent, results.indices.contains(row) else { return nil }
 
         selectedIndex = row
         userNavigated = true
@@ -870,7 +898,7 @@ final class SearchViewController: NSViewController {
     }
 
     private func contextResult() -> SearchResult? {
-        guard let id = contextResultID else { return nil }
+        guard resultsAreCurrent, let id = contextResultID else { return nil }
         return results.first { $0.id == id }
     }
 
@@ -1033,6 +1061,8 @@ extension SearchViewController: NSTextFieldDelegate {
         guard obj.object as? NSTextField === searchField else { return }
         Log.debug("query: \"\(searchField.stringValue)\"")
         placeholderView.isHidden = !searchField.stringValue.isEmpty
+        lastQueryEdit = CACurrentMediaTime()
+        cancelResultGlows()
         clearStatus()
         isNavigatingResults = false
         resetSelectionOnNextUpdate = true
@@ -1052,6 +1082,7 @@ extension SearchViewController: NSTextFieldDelegate {
             cancelResultGlows()
             engine?.cancel()
             results = []
+            reservedResultRows = 0
             tableView.reloadData()
             rootView.resultCount = 0
             rootView.isSearching = false
@@ -1134,7 +1165,7 @@ extension SearchViewController: NSTableViewDataSource, NSTableViewDelegate {
     // MARK: - Drag out
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        guard results.indices.contains(row) else { return nil }
+        guard resultsAreCurrent, results.indices.contains(row) else { return nil }
         switch results[row].action {
         case .open(let url), .reveal(let url):
             return url as NSURL
