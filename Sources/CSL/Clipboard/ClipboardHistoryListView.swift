@@ -43,6 +43,13 @@ final class ClipboardHistoryListView: NSView, NSTableViewDataSource, NSTableView
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.onSingleClick = { [weak self] row in
+            guard let self, self.entries.indices.contains(row) else { return }
+            self.selectedIndex = row
+            if self.store.copy(self.entries[row]) {
+                self.onCopy?()
+            }
+        }
         tableView.onDoubleClick = { [weak self] row in
             guard let self, self.entries.indices.contains(row) else { return }
             self.selectedIndex = row
@@ -322,13 +329,19 @@ final class ClipboardHistoryListView: NSView, NSTableViewDataSource, NSTableView
 
 
 final class ClipboardHistoryTableView: NSTableView {
+    var onSingleClick: ((Int) -> Void)?
     var onDoubleClick: ((Int) -> Void)?
     var menuProvider: ((Int) -> NSMenu?)?
 
     override func mouseDown(with event: NSEvent) {
         let row = self.row(at: convert(event.locationInWindow, from: nil))
         super.mouseDown(with: event)
-        if event.clickCount == 2, row >= 0 {
+        guard row >= 0 else { return }
+        if event.clickCount == 1 {
+            DispatchQueue.main.async { [weak self] in
+                self?.onSingleClick?(row)
+            }
+        } else if event.clickCount == 2 {
             DispatchQueue.main.async { [weak self] in
                 self?.onDoubleClick?(row)
             }

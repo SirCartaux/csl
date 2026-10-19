@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import QuartzCore
 import ServiceManagement
 
@@ -8,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var viewController: SearchViewController!
     private var launchInProgress = false
     private var launchCompletionScheduled = false
+    private var hideCompletion: (() -> Void)?
+    private var pasteAccessibilityRequested = false
     private var hotkeyManager: HotkeyManager?
     private var statusItem: NSStatusItem?
 
@@ -157,6 +160,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         viewController.onChoose = { [weak self] result, reveal in
             self?.perform(result, reveal: reveal)
+        }
+        viewController.onPaste = { [weak self] in
+            self?.pasteClipboardIntoFocusedApp()
         }
         viewController.onDragOut = { [weak self] result in
             guard let self else { return }
@@ -312,10 +318,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         Log.debug(String(format: "panel shown in %.1f ms", (CACurrentMediaTime() - started) * 1000))
     }
 
-    func hidePanel(restoreFocus: Bool) {
+    func hidePanel(restoreFocus: Bool, completion: (() -> Void)? = nil) {
         guard panel.isVisible, !isClosing else { return }
         launchInProgress = false
         launchCompletionScheduled = false
+        hideCompletion = completion
         isClosing = true
         viewController.dismissQuickLook()
         viewController.stopGlow()
@@ -458,6 +465,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             action()
             finish(true, record: false)
         }
+    }
+
+    // MARK: - Clipboard paste
+
+    private func pasteClipboardIntoFocusedApp() {
+        guard AXIsProcessTrusted() else {
+            if !pasteAccessibilityRequested {
+                pasteAccessibilityRequested = true
+                let options = [
+                    kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
+                ] as CFDictionary
+                _ = AXIsProcessTrustedWithOptions(options)
+            }
+            viewController.flashStatus("ACCESSIBILITY FOR PASTE")
+            return
+        }
+
+        hidePanel(restoreFocus: true) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                self?.postPasteKeystroke()
+            }
+        }
+    }
+
+    private func postPasteKeystroke() {
+        guard AXIsProcessTrusted() else { return }
+        let source = CGEventSource(stateID: .hidSystemState)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true) // V
+        down?.flags = .maskCommand
+        down?.post(tap: .cghidEventTap)
+        usleep(30_000)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false)
+        up?.flags = .maskCommand
+        up?.post(tap: .cghidEventTap)
+        Log.debug("clipboard paste sent")
     }
 
     // MARK: - Window delegate

@@ -5,6 +5,7 @@ final class SearchViewController: NSViewController {
     var engine: SearchEngine?
 
     var onClose: (() -> Void)?
+    var onPaste: (() -> Void)?
     var onChoose: ((SearchResult, Bool) -> Void)?
     var onDragOut: ((SearchResult) -> Void)?
 
@@ -103,7 +104,7 @@ final class SearchViewController: NSViewController {
             self.rootView.needsDisplay = true
         }
         clipboardView.onCopy = { [weak self] in
-            self?.onClose?()
+            self?.onPaste?()
         }
         rootView.addSubview(searchField)
         rootView.addSubview(placeholderView)
@@ -821,9 +822,7 @@ final class SearchViewController: NSViewController {
                     self.clipboardView.moveSelection(by: 1)
                     return nil
                 case 36, 76: // Return
-                    if self.clipboardView.copySelected() {
-                        self.onClose?()
-                    }
+                    _ = self.clipboardView.copySelected()
                     return nil
                 case 35 where flags.contains(.command): // Cmd+P
                     self.clipboardView.pinSelected()

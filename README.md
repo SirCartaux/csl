@@ -66,7 +66,7 @@ window, field editor and focus is more direct in AppKit.
 - **Resizable and scalable:** drag the glowing panel edge or any corner. Every row, font, icon, border and the glow scales with it. The panel stays centered and remembers its scale.
 - **Fast sources:** apps, websites and commands are instantaneous; indexed folders answer in milliseconds; Spotlight files stream in (prefix ~30–100 ms, substring ~300 ms).
 - **Quick Look:** press `Space` on a file result after mouse selection, `Tab` or arrows. `Space`/`Esc` closes it; typing jumps back into the query.
-- **Clipboard history:** a persistent, 30 MB history of text, links, images and files, built directly into the launcher. Open it with the clipboard button next to `CMD + SPACE`, `⌘⇧V`, the menu bar, or the `CLIPBOARD HISTORY` command; the launcher field filters it. Pin, copy, delete or clear entries; pinned entries survive eviction and concealed clipboard types are ignored.
+- **Clipboard history:** a persistent, 30 MB history of text, links, images and files, built directly into the launcher. Open it with the clipboard button next to `CMD + SPACE`, `⌘⇧V`, the menu bar, or the `CLIPBOARD HISTORY` command; the launcher field filters it. Click a row or press `Enter` to copy **and paste into the previously focused app**. Pin, delete or clear entries; pinned entries survive eviction and concealed clipboard types are ignored.
 - **Native actions:** single click selects, double click or `Enter` opens, `⌘Enter` reveals in Finder, right click for Open / Show in Finder / Copy Path, drag files and URLs out of the launcher. Launches are asynchronous: the selected row turns green, presses in and shows a “LAUNCHING” pixel chase plus a uniform connected rectangular frame and three thin rectangular outline impulses until the app/file has opened.
 - **Live index:** FSEvents keeps indexed folders current — new, changed, renamed and deleted files show up in about a second, with catch-up after a restart.
 - **Smart local ranking:** match tiers, frequency, recency, query affinity, time of day and working-folder context. Commands are never boosted by usage.
@@ -422,7 +422,7 @@ CSL_DEBUG=1 ./build/CSL.app/Contents/MacOS/CSL
   `/Applications` — the app shows a hint.
 - The `⌘Space` conflict with Spotlight must be resolved once manually.
 - Favicon fetching needs network access; without it the globe placeholder stays.
-- No Accessibility or Screen Recording permission is required.
+- No Accessibility or Screen Recording permission is required for search, launching or copying. **Auto-paste into the focused app needs Accessibility permission**; CSL asks on first use and still copies without it.
 
 ## License
 

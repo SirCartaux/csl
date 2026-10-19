@@ -308,6 +308,16 @@ final class RootView: NSView {
             x = drawHint(key: "CMD+DEL", label: "DELETE", at: x, centerY: rect.midY)
             _ = drawHint(key: "ESC", label: "BACK", at: x, centerY: rect.midY)
 
+            if let statusOverride {
+                drawStatus(statusOverride, in: CGRect(
+                    x: rect.maxX - Theme.ls(240),
+                    y: rect.minY + Theme.ls(8),
+                    width: Theme.ls(222),
+                    height: Theme.ls(12)
+                ), color: Theme.accent)
+                return
+            }
+
             let bytes = ByteCountFormatter.string(fromByteCount: Int64(clipboardBytes), countStyle: .memory)
             let capacity = ByteCountFormatter.string(fromByteCount: Int64(clipboardCapacity), countStyle: .memory)
             let countText = "\(clipboardCount) \(clipboardCount == 1 ? "ITEM" : "ITEMS")  ·  \(bytes)/\(capacity)"
