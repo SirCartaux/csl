@@ -4,7 +4,9 @@ import AppKit
 /// NSTextField placeholder is top-aligned in its cell, which looks off in the
 /// taller launcher field.
 final class SearchPlaceholderView: NSView {
-    let text = "TYPE TO SEARCH"
+    var text = "TYPE TO SEARCH" {
+        didSet { needsDisplay = true }
+    }
 
     private let leftInset: CGFloat = 4
 

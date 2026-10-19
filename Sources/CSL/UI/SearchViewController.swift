@@ -18,6 +18,9 @@ final class SearchViewController: NSViewController {
     private let placeholderView = SearchPlaceholderView()
     private let searchActivity = PixelActivityView()
     private let searchPrompt = SearchPromptView(frame: .zero)
+    private let clipboardButton = ClipboardHeaderButton(frame: .zero)
+    private let clipboardView = ClipboardHistoryListView(frame: .zero)
+    private var clipboardMode = false
     private let functionGraph = FunctionGraphView()
     private var pinchAnchor: NSPoint?
     private lazy var graphPinch = NSMagnificationGestureRecognizer(target: self, action: #selector(handleGraphPinch(_:)))
@@ -90,6 +93,18 @@ final class SearchViewController: NSViewController {
             self?.onClose?()
         }
         rootView.addSubview(scrollView)
+        clipboardView.isHidden = true
+        rootView.addSubview(clipboardView)
+        clipboardView.onChange = { [weak self] count, bytes in
+            guard let self else { return }
+            self.rootView.clipboardCount = count
+            self.rootView.clipboardBytes = bytes
+            self.rootView.clipboardCapacity = ClipboardHistoryStore.maxBytes
+            self.rootView.needsDisplay = true
+        }
+        clipboardView.onCopy = { [weak self] in
+            self?.onClose?()
+        }
         rootView.addSubview(searchField)
         rootView.addSubview(placeholderView)
         rootView.addSubview(searchPrompt)
@@ -116,6 +131,10 @@ final class SearchViewController: NSViewController {
             self?.copyCalculatorResult()
         }
         rootView.addSubview(calculatorHint)
+        clipboardButton.onToggle = { [weak self] in
+            self?.toggleClipboardMode()
+        }
+        rootView.addSubview(clipboardButton)
         functionGraph.isHidden = true
         rootView.addSubview(functionGraph, positioned: .below, relativeTo: resizeHandle)
         rootView.allowedTouchTypes = [.direct, .indirect]
@@ -184,6 +203,8 @@ final class SearchViewController: NSViewController {
         interactionEffects.frame = view.bounds
         resizeHandle.frame = view.bounds
         scrollView.frame = listRect
+        clipboardView.frame = listRect
+        clipboardButton.frame = Layout.headerClipboardRect(in: bounds)
         functionGraph.frame = listRect
         functionGraph.needsDisplay = true
         searchField.frame = CGRect(
@@ -343,6 +364,13 @@ final class SearchViewController: NSViewController {
         launchPulseView?.removeFromSuperview()
         launchPulseView = nil
         searchField.isEditable = true
+        clipboardMode = false
+        clipboardButton.active = false
+        clipboardView.isHidden = true
+        rootView.clipboardMode = false
+        rootView.clipboardCount = 0
+        rootView.clipboardBytes = 0
+        placeholderView.text = "TYPE TO SEARCH"
         rootView.calculatorActive = false
         rootView.graphActive = false
         searchPrompt.stop()
@@ -558,6 +586,7 @@ final class SearchViewController: NSViewController {
     }
 
     private var listHeight: CGFloat {
+        if clipboardMode { return Theme.ls(340) }
         if rootView.graphActive { return Theme.ls(340) }
         guard !results.isEmpty else { return Theme.emptyListHeight }
         let rows = max(min(results.count, Theme.maxRows), reservedResultRows)
@@ -779,6 +808,41 @@ final class SearchViewController: NSViewController {
                 return nil
             }
 
+            if self.clipboardMode, self.view.window?.isKeyWindow == true {
+                let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
+                switch event.keyCode {
+                case 53: // Escape: leave clipboard mode, keep launcher open
+                    self.exitClipboardMode()
+                    return nil
+                case 126: // Up
+                    self.clipboardView.moveSelection(by: -1)
+                    return nil
+                case 125: // Down
+                    self.clipboardView.moveSelection(by: 1)
+                    return nil
+                case 36, 76: // Return
+                    if self.clipboardView.copySelected() {
+                        self.onClose?()
+                    }
+                    return nil
+                case 35 where flags.contains(.command): // Cmd+P
+                    self.clipboardView.pinSelected()
+                    return nil
+                case 51 where flags.contains(.command): // Cmd+Delete
+                    if flags.contains(.shift) {
+                        self.clipboardView.clearAll()
+                    } else {
+                        self.clipboardView.deleteSelected()
+                    }
+                    return nil
+                case 13 where flags.contains(.command): // Cmd+W
+                    self.onClose?()
+                    return nil
+                default:
+                    break
+                }
+            }
+
             if previewIsOpen, QLPreviewPanel.sharedPreviewPanelExists() {
                 if event.isARepeat { return nil }
                 switch event.keyCode {
@@ -971,6 +1035,88 @@ final class SearchViewController: NSViewController {
         flashStatus("COPIED URL")
     }
 
+    // MARK: - Clipboard mode
+
+    func enterClipboardMode() {
+        ClipboardHistoryStore.shared.start()
+        if clipboardMode {
+            clipboardView.reload()
+            focus()
+            return
+        }
+
+        clipboardMode = true
+        queryWork?.cancel()
+        queryWork = nil
+        engine?.cancel()
+        dismissQuickLook()
+        cancelResultGlows()
+        launchingResultID = nil
+        launchPulseView?.stop()
+        launchPulseView?.removeFromSuperview()
+        launchPulseView = nil
+        searchField.isEditable = true
+        results = []
+        displayedQuery = ""
+        reservedResultRows = 0
+        selectedIndex = 0
+        searchField.stringValue = ""
+        searchField.isEditable = true
+        placeholderView.text = "SEARCH CLIPBOARD…"
+        placeholderView.isHidden = false
+        clipboardView.isHidden = false
+        clipboardView.filter("")
+        scrollView.isHidden = true
+        functionGraph.stopInteraction()
+        functionGraph.isHidden = true
+        calculatorHint.isHidden = true
+        calculatorCopyText = nil
+        rootView.calculatorActive = false
+        rootView.graphActive = false
+        rootView.clipboardMode = true
+        rootView.clipboardCapacity = ClipboardHistoryStore.maxBytes
+        rootView.resultCount = 0
+        rootView.isSearching = false
+        rootView.query = ""
+        rootView.indexProgress = nil
+        searchActivity.stop()
+        clipboardButton.active = true
+        refreshWindowSize()
+        focus()
+        rootView.needsDisplay = true
+        Log.debug("clipboard mode entered")
+    }
+
+    func exitClipboardMode() {
+        guard clipboardMode else { return }
+        clipboardMode = false
+        clipboardButton.active = false
+        clipboardView.isHidden = true
+        placeholderView.text = "TYPE TO SEARCH"
+        searchField.stringValue = ""
+        placeholderView.isHidden = false
+        scrollView.isHidden = false
+        rootView.clipboardMode = false
+        rootView.clipboardCount = 0
+        rootView.clipboardBytes = 0
+        rootView.resultCount = 0
+        rootView.isSearching = false
+        rootView.query = ""
+        refreshWindowSize()
+        engine?.search("")
+        focus()
+        rootView.needsDisplay = true
+        Log.debug("clipboard mode exited")
+    }
+
+    func toggleClipboardMode() {
+        if clipboardMode {
+            exitClipboardMode()
+        } else {
+            enterClipboardMode()
+        }
+    }
+
     // MARK: - Launch state
 
     func markLaunching(_ result: SearchResult) {
@@ -1073,7 +1219,8 @@ final class SearchViewController: NSViewController {
 
 extension SearchViewController: NSTextFieldDelegate {
     private func updateCalculatorHint() {
-        guard !rootView.graphActive, let calculation = Calculator.evaluate(searchField.stringValue),
+        guard !clipboardMode, !rootView.graphActive,
+              let calculation = Calculator.evaluate(searchField.stringValue),
               !searchField.stringValue.isEmpty else {
             calculatorCopyText = nil
             if !calculatorHint.isHidden {
@@ -1134,6 +1281,14 @@ extension SearchViewController: NSTextFieldDelegate {
         Log.debug("query: \"\(searchField.stringValue)\"")
         placeholderView.isHidden = !searchField.stringValue.isEmpty
         lastQueryEdit = CACurrentMediaTime()
+        if clipboardMode {
+            interactionEffects.inputPulse()
+            searchPrompt.pulse()
+            clipboardView.filter(searchField.stringValue)
+            rootView.clipboardCapacity = ClipboardHistoryStore.maxBytes
+            rootView.needsDisplay = true
+            return
+        }
         queryWork?.cancel()
         queryWork = nil
         cancelResultGlows()

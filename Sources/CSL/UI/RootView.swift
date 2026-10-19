@@ -44,6 +44,21 @@ enum Layout {
         )
     }
 
+    static func headerClipboardRect(in bounds: CGRect) -> CGRect {
+        let header = headerRect(in: bounds)
+        let keyText = "CMD + SPACE"
+        let keySize = (keyText as NSString).size(withAttributes: [.font: Theme.launcherDisplay(8)])
+        let capX = header.maxX - keySize.width - Theme.ls(20)
+        let width = Theme.ls(76)
+        let height = Theme.ls(18)
+        return CGRect(
+            x: capX - Theme.ls(10) - width,
+            y: header.midY - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
     static func footerProgressRect(in bounds: CGRect) -> CGRect {
         let footer = footerRect(in: bounds)
         let activity = footerActivityRect(in: bounds)
@@ -88,6 +103,10 @@ final class RootView: NSView {
     var resultCount: Int = 0
     var isSearching: Bool = false
     var graphActive = false { didSet { needsDisplay = true } }
+    var clipboardMode = false { didSet { needsDisplay = true } }
+    var clipboardCount = 0 { didSet { needsDisplay = true } }
+    var clipboardBytes = 0 { didSet { needsDisplay = true } }
+    var clipboardCapacity = 30 * 1024 * 1024
     var calculatorActive = false {
         didSet { needsDisplay = true }
     }
@@ -199,7 +218,7 @@ final class RootView: NSView {
 
     private func drawList(panel: CGRect) {
         let rect = Layout.listRect(in: bounds)
-        guard !graphActive, resultCount == 0 else { return }
+        guard !graphActive, !clipboardMode, resultCount == 0 else { return }
 
         if isSearching || indexProgress != nil {
             drawCentered(
@@ -270,6 +289,29 @@ final class RootView: NSView {
             x = drawHint(key: "DRAG", label: "PAN", at: x, centerY: rect.midY)
             x = drawHint(key: "ENTER", label: "AUTO", at: x, centerY: rect.midY)
             _ = drawHint(key: "ESC", label: "CLOSE", at: x, centerY: rect.midY)
+            return
+        }
+        if clipboardMode {
+            var x = rect.minX + Theme.ls(18)
+            x = drawHint(key: "UP/DOWN", label: "BROWSE", at: x, centerY: rect.midY)
+            x = drawHint(key: "ENTER", label: "COPY", at: x, centerY: rect.midY)
+            x = drawHint(key: "CMD+P", label: "PIN", at: x, centerY: rect.midY)
+            x = drawHint(key: "CMD+DEL", label: "DELETE", at: x, centerY: rect.midY)
+            _ = drawHint(key: "ESC", label: "BACK", at: x, centerY: rect.midY)
+
+            let bytes = ByteCountFormatter.string(fromByteCount: Int64(clipboardBytes), countStyle: .memory)
+            let capacity = ByteCountFormatter.string(fromByteCount: Int64(clipboardCapacity), countStyle: .memory)
+            let countText = "\(clipboardCount) \(clipboardCount == 1 ? "ITEM" : "ITEMS")  ·  \(bytes)/\(capacity)"
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .right
+            (countText as NSString).draw(
+                in: CGRect(x: rect.maxX - Theme.ls(240), y: rect.minY + Theme.ls(8), width: Theme.ls(222), height: Theme.ls(12)),
+                withAttributes: [
+                    .font: Theme.launcherDisplay(8),
+                    .foregroundColor: Theme.textFaint,
+                    .paragraphStyle: paragraph
+                ]
+            )
             return
         }
         var cursor: CGFloat = rect.minX + Theme.ls(18)

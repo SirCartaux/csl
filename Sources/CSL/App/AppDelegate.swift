@@ -60,9 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         observeSettings()
 
         if let path = ProcessInfo.processInfo.environment["CSL_CLIPBOARD_SNAPSHOT"], !path.isEmpty {
-            ClipboardHistoryWindowController.shared.show()
+            showPanel()
+            viewController.enterClipboardMode()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.writeSnapshot(window: ClipboardHistoryWindowController.shared.nsWindow, to: path)
+                self?.writeSnapshot(to: path)
                 NSApp.terminate(nil)
             }
             return
@@ -208,7 +209,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func showSettings() {
         hidePanel(restoreFocus: false)
-        ClipboardHistoryWindowController.shared.close(restoreFocus: false)
         SettingsWindowController.shared.show()
     }
 
@@ -228,8 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if flags.contains(.command), flags.contains(.shift),
                event.keyCode == 9, // V
                self.panel.isVisible {
-                self.hidePanel(restoreFocus: false)
-                ClipboardHistoryWindowController.shared.show()
+                self.viewController.toggleClipboardMode()
                 return nil
             }
             guard flags.contains(.command),
@@ -281,9 +280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func showPanel() {
         if SettingsWindowController.shared.isVisible {
             SettingsWindowController.shared.close(restoreFocus: false)
-        }
-        if ClipboardHistoryWindowController.shared.isVisible {
-            ClipboardHistoryWindowController.shared.close(restoreFocus: false)
         }
         if isClosing {
             // Interrupt closing and resume interaction immediately.
@@ -536,9 +532,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func showClipboardHistory() {
-        hidePanel(restoreFocus: false)
+        // A command can request this while the launcher is already completing
+        // its normal "launch" feedback. Entering clipboard mode takes over, so
+        // cancel that completion instead of letting it close the panel.
+        launchInProgress = false
+        launchCompletionScheduled = false
         SettingsWindowController.shared.close(restoreFocus: false)
-        ClipboardHistoryWindowController.shared.show()
+        if !panel.isVisible {
+            showPanel()
+        }
+        viewController.enterClipboardMode()
     }
 
     @objc private func quit() {

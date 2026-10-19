@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Clipboard
+- Add a persistent 30 MB clipboard history for text, links, images and files, with deduplication, pinning, filtering and source-app metadata.
+- Embed the history directly in the launcher: the header clipboard button, `⌘⇧V`, the menu bar and the `CLIPBOARD HISTORY` command all switch the launcher into clipboard mode, using the same search field as a filter.
+
 ### Launcher
 - Coalesce rapid query edits with a short settle window. The result list stays stable while typing instead of rebuilding for every letter, and stale-row actions stay blocked until the new query is displayed.
 - The amber `>` prompt now gives a smaller pop and amber glow on every text edit, in a dedicated centre-anchored sublayer.
