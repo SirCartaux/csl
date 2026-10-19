@@ -12,7 +12,7 @@ final class ResultRowView: NSView {
 
     private let launchSpinner = LaunchSpinnerView(frame: .zero)
     private let launchWash = CALayer()
-    private let launchOutline = CAShapeLayer()
+    private var launchPulses: [CAShapeLayer] = []
 
     var rowIndex: Int = 0
     var menuProvider: ((Int) -> NSMenu?)?
@@ -28,17 +28,24 @@ final class ResultRowView: NSView {
         launchWash.opacity = 0
         layer?.addSublayer(launchWash)
 
-        launchOutline.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        launchOutline.fillColor = nil
-        launchOutline.strokeColor = Theme.success.cgColor
-        launchOutline.lineWidth = max(1, Theme.ls(1.5))
-        launchOutline.lineJoin = .miter
-        launchOutline.shadowColor = Theme.success.cgColor
-        launchOutline.shadowOffset = .zero
-        launchOutline.shadowOpacity = 0.8
-        launchOutline.shadowRadius = Theme.ls(6)
-        launchOutline.opacity = 0
-        layer?.addSublayer(launchOutline)
+        // Three connected rectangular impulses: a slightly stronger first
+        // outline and two thinner echoes, all expanding with ease-out.
+        for index in 0..<3 {
+            let pulse = CAShapeLayer()
+            pulse.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            pulse.fillColor = nil
+            pulse.strokeColor = Theme.success.withAlphaComponent(index == 0 ? 0.9 : 0.7).cgColor
+            pulse.lineWidth = max(1, Theme.ls(index == 0 ? 1.4 : 0.9))
+            pulse.lineJoin = .miter
+            pulse.lineCap = .butt
+            pulse.shadowColor = Theme.success.cgColor
+            pulse.shadowOffset = .zero
+            pulse.shadowOpacity = index == 0 ? 0.8 : 0.55
+            pulse.shadowRadius = Theme.ls(index == 0 ? 6 : 4)
+            pulse.opacity = 0
+            layer?.addSublayer(pulse)
+            launchPulses.append(pulse)
+        }
 
         addSubview(launchSpinner)
     }
@@ -63,9 +70,11 @@ final class ResultRowView: NSView {
         }
 
         launchWash.frame = bounds
-        launchOutline.bounds = CGRect(origin: .zero, size: bounds.size)
-        launchOutline.position = CGPoint(x: bounds.midX, y: bounds.midY)
-        updateOutlinePath()
+        for pulse in launchPulses {
+            pulse.bounds = CGRect(origin: .zero, size: bounds.size)
+            pulse.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
+        updateOutlinePaths()
     }
 
     func configure(with result: SearchResult, selected: Bool, launching: Bool = false) {
@@ -136,33 +145,47 @@ final class ResultRowView: NSView {
     }
 
     private func startOutline() {
-        updateOutlinePath()
-        launchOutline.removeAllAnimations()
-        launchOutline.opacity = 0
+        updateOutlinePaths()
+        let now = CACurrentMediaTime()
+        for (index, pulse) in launchPulses.enumerated() {
+            pulse.removeAllAnimations()
+            pulse.opacity = 0
+            let begin = now + Double(index) * 0.10
+            let duration = 0.72
 
-        let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [0.992, 1.025, 1.075]
-        scale.keyTimes = [0, 0.35, 1]
-        scale.duration = 0.82
-        scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        launchOutline.add(scale, forKey: "launchOutlineScale")
+            let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+            scale.values = [1.0, 1.0, 1.035 + Double(index) * 0.025]
+            scale.keyTimes = [0, 0.18, 1]
+            scale.duration = duration
+            scale.beginTime = begin
+            scale.fillMode = .backwards
+            scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            pulse.add(scale, forKey: "launchPulseScale")
 
-        let fade = CAKeyframeAnimation(keyPath: "opacity")
-        fade.values = [0.95, 0.78, 0.0]
-        fade.keyTimes = [0, 0.45, 1]
-        fade.duration = 0.82
-        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        launchOutline.add(fade, forKey: "launchOutlineFade")
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = [0.0, index == 0 ? 0.90 : 0.68, 0.0]
+            fade.keyTimes = [0, 0.22, 1]
+            fade.duration = duration
+            fade.beginTime = begin
+            fade.fillMode = .backwards
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            pulse.add(fade, forKey: "launchPulseFade")
+        }
     }
 
     private func stopOutline() {
-        launchOutline.removeAllAnimations()
-        launchOutline.opacity = 0
+        for pulse in launchPulses {
+            pulse.removeAllAnimations()
+            pulse.opacity = 0
+        }
     }
 
-    private func updateOutlinePath() {
-        let rect = bounds.insetBy(dx: Theme.ls(3), dy: Theme.ls(3))
-        launchOutline.path = CGPath(rect: rect, transform: nil)
+    private func updateOutlinePaths() {
+        let rect = bounds.insetBy(dx: Theme.ls(2), dy: Theme.ls(2))
+        let path = CGPath(rect: rect, transform: nil)
+        for pulse in launchPulses {
+            pulse.path = path
+        }
     }
 
     // MARK: - Drawing
@@ -185,19 +208,7 @@ final class ResultRowView: NSView {
         }
 
         if isLaunching {
-            PixelDraw.frame(
-                bounds.insetBy(dx: Theme.ls(2), dy: Theme.ls(2)),
-                thickness: max(1, Theme.ls(1)),
-                color: Theme.success.withAlphaComponent(0.62),
-                notch: Theme.ls(3)
-            )
-            PixelDraw.hLine(
-                x: Theme.ls(52),
-                y: bounds.maxY - Theme.ls(2),
-                width: bounds.width - Theme.ls(52),
-                color: Theme.success,
-                thickness: max(1, Theme.ls(2))
-            )
+            drawConnectedLaunchFrame()
         }
 
         drawIcon(result)
@@ -265,6 +276,20 @@ final class ResultRowView: NSView {
         } else if isSelected {
             PixelDraw.chevron(x: bounds.width - Theme.ls(21), y: Theme.ls(16), unit: Theme.ls(2), color: Theme.accent)
         }
+    }
+
+    /// A single connected rectangle: 1 px sides and a thicker bottom edge,
+    /// with overlapping corners so no gaps can appear.
+    private func drawConnectedLaunchFrame() {
+        let rect = bounds.insetBy(dx: Theme.ls(2), dy: Theme.ls(2))
+        let side = max(1, Theme.ls(1))
+        let bottom = max(1, Theme.ls(2))
+        let color = Theme.success.withAlphaComponent(0.72)
+        color.setFill()
+        CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: side).fill()
+        CGRect(x: rect.minX, y: rect.maxY - bottom, width: rect.width, height: bottom).fill()
+        CGRect(x: rect.minX, y: rect.minY, width: side, height: rect.height).fill()
+        CGRect(x: rect.maxX - side, y: rect.minY, width: side, height: rect.height).fill()
     }
 
     private func drawIcon(_ result: SearchResult) {

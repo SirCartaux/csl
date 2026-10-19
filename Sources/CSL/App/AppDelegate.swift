@@ -384,7 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.launchInProgress, !self.launchCompletionScheduled else { return }
                 self.launchCompletionScheduled = true
-                let remaining = max(0, 0.85 - (CACurrentMediaTime() - started))
+                let remaining = max(0, 1.0 - (CACurrentMediaTime() - started))
                 DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
                     guard let self, self.launchInProgress else { return }
                     self.launchInProgress = false
