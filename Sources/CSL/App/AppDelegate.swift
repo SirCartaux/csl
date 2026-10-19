@@ -348,6 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         launchCompletionScheduled = false
         hideCompletion = completion
         isClosing = true
+        viewController.cancelPendingOpen()
         viewController.dismissQuickLook()
         viewController.stopGlow()
         engine.cancel()

@@ -33,10 +33,12 @@ final class SearchPresentationTests: XCTestCase {
         controller.apply(results: [result("document")], isSearching: true)
         XCTAssertEqual(controller.numberOfRows(in: table), 1)
         XCTAssertEqual(controller.preferredContentHeight, height)
-        _ = controller.control(controller.searchField, textView: NSTextView(),
-                               doCommandBy: #selector(NSResponder.insertNewline(_:)))
-        XCTAssertEqual(chosen, ["document"])
+        XCTAssertTrue(chosen.isEmpty)
+
+        // The Enter pressed while searching was queued; completion opens the
+        // first result without another key press.
         controller.apply(results: [result("document")], isSearching: false)
+        XCTAssertEqual(chosen, ["document"])
         XCTAssertLessThan(controller.preferredContentHeight, height)
         controller.stopGlow()
     }

@@ -49,6 +49,8 @@ final class SearchViewController: NSViewController {
     private var calculatorCopyText: String?
     private var launchingResultID: String?
     private var launchPulseView: LaunchPulseView?
+    private var pendingOpenAfterSearch = false
+    private var pendingOpenReveal = false
     private var suppressClick = false
     private(set) var isDraggingResult = false
     private var contextResultID: String?
@@ -343,6 +345,7 @@ final class SearchViewController: NSViewController {
     func prepareForPresentation() {
         queryWork?.cancel()
         queryWork = nil
+        pendingOpenAfterSearch = false
         cancelPixelAnimations()
         clearStatus()
         rootView.indexProgress = nil
@@ -702,6 +705,21 @@ final class SearchViewController: NSViewController {
             Log.debug("result count flash: \(results.count)")
         }
 
+        if pendingOpenAfterSearch, resultsAreCurrent, !isSearching {
+            pendingOpenAfterSearch = false
+            if results.isEmpty {
+                NSSound.beep()
+                Log.debug("queued enter: no results")
+            } else {
+                selectedIndex = 0
+                tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+                tableView.scrollRowToVisible(0)
+                Log.debug("queued enter opening first result: \(results[0].title)")
+                chooseSelected(reveal: pendingOpenReveal)
+                pendingOpenReveal = false
+            }
+        }
+
         let newRows = results.indices.filter { !previousIDs.contains(results[$0].id) }
         if CACurrentMediaTime() - lastQueryEdit > 0.12 {
             animateNewRows(newRows)
@@ -712,6 +730,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Selection
 
     private func moveSelection(by delta: Int) {
+        pendingOpenAfterSearch = false
         guard resultsAreCurrent, !rootView.graphActive, !results.isEmpty else { return }
         let next = max(0, min(results.count - 1, selectedIndex + delta))
         guard next != selectedIndex else { return }
@@ -723,6 +742,14 @@ final class SearchViewController: NSViewController {
         updateInteractionSelection(animated: true)
     }
 
+    func cancelPendingOpen() {
+        pendingOpenAfterSearch = false
+    }
+
+    private var shouldDeferEnterUntilSearchCompletes: Bool {
+        queryWork != nil || !resultsAreCurrent || rootView.isSearching
+    }
+
     private func chooseSelected(reveal: Bool) {
         guard resultsAreCurrent, !rootView.graphActive else { return }
         guard results.indices.contains(selectedIndex) else { return }
@@ -731,6 +758,7 @@ final class SearchViewController: NSViewController {
     }
 
     @objc private func rowClicked() {
+        pendingOpenAfterSearch = false
         guard resultsAreCurrent, !suppressClick else { return }
         let row = tableView.clickedRow
         guard results.indices.contains(row) else { return }
@@ -753,6 +781,7 @@ final class SearchViewController: NSViewController {
     }
 
     private func beginResultsNavigation() {
+        pendingOpenAfterSearch = false
         guard resultsAreCurrent, !rootView.graphActive, !results.isEmpty else { return }
         isNavigatingResults = true
         selectedIndex = 0
@@ -1045,6 +1074,7 @@ final class SearchViewController: NSViewController {
         }
 
         clipboardMode = true
+        pendingOpenAfterSearch = false
         queryWork?.cancel()
         queryWork = nil
         engine?.cancel()
@@ -1280,6 +1310,7 @@ extension SearchViewController: NSTextFieldDelegate {
         Log.debug("query: \"\(searchField.stringValue)\"")
         placeholderView.isHidden = !searchField.stringValue.isEmpty
         lastQueryEdit = CACurrentMediaTime()
+        pendingOpenAfterSearch = false
         if clipboardMode {
             interactionEffects.inputPulse()
             searchPrompt.pulse()
@@ -1353,7 +1384,14 @@ extension SearchViewController: NSTextFieldDelegate {
             if copyCalculatorResult() {
                 return true
             }
-            chooseSelected(reveal: NSEvent.modifierFlags.contains(.command))
+            let reveal = NSEvent.modifierFlags.contains(.command)
+            if shouldDeferEnterUntilSearchCompletes {
+                pendingOpenAfterSearch = true
+                pendingOpenReveal = reveal
+                Log.debug("enter queued until search completes")
+                return true
+            }
+            chooseSelected(reveal: reveal)
             return true
         case #selector(NSResponder.cancelOperation(_:)):
             onClose?()

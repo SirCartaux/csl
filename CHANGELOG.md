@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Launcher
+- Pressing Enter while a query is still settling or searching now queues the open. As soon as the search completes, the first result opens automatically instead of requiring a second Enter. Editing, navigating or closing cancels the queued open.
+
 ## 0.6.2 — 2026-10-19
 
 ### Clipboard
