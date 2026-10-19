@@ -44,6 +44,7 @@ final class SearchViewController: NSViewController {
     private var pendingResultFlash = false
     private var calculatorCopyText: String?
     private var launchingResultID: String?
+    private var launchPulseView: LaunchPulseView?
     private var suppressClick = false
     private(set) var isDraggingResult = false
     private var contextResultID: String?
@@ -338,6 +339,9 @@ final class SearchViewController: NSViewController {
         calculatorHint.isHidden = true
         calculatorCopyText = nil
         launchingResultID = nil
+        launchPulseView?.stop()
+        launchPulseView?.removeFromSuperview()
+        launchPulseView = nil
         searchField.isEditable = true
         rootView.calculatorActive = false
         rootView.graphActive = false
@@ -980,11 +984,31 @@ final class SearchViewController: NSViewController {
         searchActivity.stop()
         searchField.isEditable = false
         tableView.reloadData()
+        showLaunchPulses()
         Log.debug("launch marked: \(result.title)")
+    }
+
+    private func showLaunchPulses() {
+        launchPulseView?.stop()
+        launchPulseView?.removeFromSuperview()
+        launchPulseView = nil
+
+        guard results.indices.contains(selectedIndex),
+              let row = tableView.rect(ofRow: selectedIndex) as CGRect? else { return }
+        let rect = rootView.convert(row, from: tableView)
+        guard rect.width > 1, rect.height > 1 else { return }
+
+        let pulseView = LaunchPulseView(frame: rect)
+        rootView.addSubview(pulseView)
+        launchPulseView = pulseView
+        pulseView.start()
     }
 
     func finishLaunching(success: Bool) {
         launchingResultID = nil
+        launchPulseView?.stop()
+        launchPulseView?.removeFromSuperview()
+        launchPulseView = nil
         searchField.isEditable = true
         tableView.reloadData()
         if !success {

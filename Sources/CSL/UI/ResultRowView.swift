@@ -12,7 +12,6 @@ final class ResultRowView: NSView {
 
     private let launchSpinner = LaunchSpinnerView(frame: .zero)
     private let launchWash = CALayer()
-    private var launchPulses: [CAShapeLayer] = []
 
     var rowIndex: Int = 0
     var menuProvider: ((Int) -> NSMenu?)?
@@ -27,25 +26,6 @@ final class ResultRowView: NSView {
         launchWash.backgroundColor = Theme.success.withAlphaComponent(0.10).cgColor
         launchWash.opacity = 0
         layer?.addSublayer(launchWash)
-
-        // Three connected rectangular impulses: a slightly stronger first
-        // outline and two thinner echoes, all expanding with ease-out.
-        for index in 0..<3 {
-            let pulse = CAShapeLayer()
-            pulse.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-            pulse.fillColor = nil
-            pulse.strokeColor = Theme.success.withAlphaComponent(index == 0 ? 0.9 : 0.7).cgColor
-            pulse.lineWidth = max(1, Theme.ls(index == 0 ? 1.4 : 0.9))
-            pulse.lineJoin = .miter
-            pulse.lineCap = .butt
-            pulse.shadowColor = Theme.success.cgColor
-            pulse.shadowOffset = .zero
-            pulse.shadowOpacity = index == 0 ? 0.8 : 0.55
-            pulse.shadowRadius = Theme.ls(index == 0 ? 6 : 4)
-            pulse.opacity = 0
-            layer?.addSublayer(pulse)
-            launchPulses.append(pulse)
-        }
 
         addSubview(launchSpinner)
     }
@@ -70,11 +50,6 @@ final class ResultRowView: NSView {
         }
 
         launchWash.frame = bounds
-        for pulse in launchPulses {
-            pulse.bounds = CGRect(origin: .zero, size: bounds.size)
-            pulse.position = CGPoint(x: bounds.midX, y: bounds.midY)
-        }
-        updateOutlinePaths()
     }
 
     func configure(with result: SearchResult, selected: Bool, launching: Bool = false) {
@@ -97,10 +72,8 @@ final class ResultRowView: NSView {
     private func setLaunching(_ launching: Bool, animated: Bool) {
         if launching {
             launchSpinner.start()
-            startOutline()
         } else {
             launchSpinner.stop()
-            stopOutline()
         }
         animatePress(launching, animated: animated)
         animateWash(launching, animated: animated)
@@ -144,50 +117,6 @@ final class ResultRowView: NSView {
         layer.add(press, forKey: "launchPress")
     }
 
-    private func startOutline() {
-        updateOutlinePaths()
-        let now = CACurrentMediaTime()
-        for (index, pulse) in launchPulses.enumerated() {
-            pulse.removeAllAnimations()
-            pulse.opacity = 0
-            let begin = now + Double(index) * 0.10
-            let duration = 0.72
-
-            let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-            scale.values = [1.0, 1.0, 1.035 + Double(index) * 0.025]
-            scale.keyTimes = [0, 0.18, 1]
-            scale.duration = duration
-            scale.beginTime = begin
-            scale.fillMode = .backwards
-            scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            pulse.add(scale, forKey: "launchPulseScale")
-
-            let fade = CAKeyframeAnimation(keyPath: "opacity")
-            fade.values = [0.0, index == 0 ? 0.90 : 0.68, 0.0]
-            fade.keyTimes = [0, 0.22, 1]
-            fade.duration = duration
-            fade.beginTime = begin
-            fade.fillMode = .backwards
-            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            pulse.add(fade, forKey: "launchPulseFade")
-        }
-    }
-
-    private func stopOutline() {
-        for pulse in launchPulses {
-            pulse.removeAllAnimations()
-            pulse.opacity = 0
-        }
-    }
-
-    private func updateOutlinePaths() {
-        let rect = bounds.insetBy(dx: Theme.ls(2), dy: Theme.ls(2))
-        let path = CGPath(rect: rect, transform: nil)
-        for pulse in launchPulses {
-            pulse.path = path
-        }
-    }
-
     // MARK: - Drawing
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -199,10 +128,12 @@ final class ResultRowView: NSView {
 
         if isSelected || isLaunching {
             PixelDraw.fill(bounds, Theme.bgSelected)
-            PixelDraw.fill(
-                CGRect(x: 0, y: 0, width: Theme.ls(3), height: bounds.height),
-                isLaunching ? Theme.success : Theme.accent
-            )
+            if !isLaunching {
+                PixelDraw.fill(
+                    CGRect(x: 0, y: 0, width: Theme.ls(3), height: bounds.height),
+                    Theme.accent
+                )
+            }
         } else {
             PixelDraw.hLine(x: Theme.ls(52), y: bounds.maxY - Theme.ls(1), width: bounds.width - Theme.ls(52), color: Theme.line, thickness: max(1, Theme.ls(1)))
         }
@@ -278,18 +209,17 @@ final class ResultRowView: NSView {
         }
     }
 
-    /// A single connected rectangle: 1 px sides and a thicker bottom edge,
-    /// with overlapping corners so no gaps can appear.
+    /// One connected rectangle with the same stroke width on every edge.
+    /// Overlapping corner fills guarantee that no side can look detached.
     private func drawConnectedLaunchFrame() {
         let rect = bounds.insetBy(dx: Theme.ls(2), dy: Theme.ls(2))
-        let side = max(1, Theme.ls(1))
-        let bottom = max(1, Theme.ls(2))
-        let color = Theme.success.withAlphaComponent(0.72)
+        let thickness = max(1, Theme.ls(2))
+        let color = Theme.success.withAlphaComponent(0.78)
         color.setFill()
-        CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: side).fill()
-        CGRect(x: rect.minX, y: rect.maxY - bottom, width: rect.width, height: bottom).fill()
-        CGRect(x: rect.minX, y: rect.minY, width: side, height: rect.height).fill()
-        CGRect(x: rect.maxX - side, y: rect.minY, width: side, height: rect.height).fill()
+        CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: thickness).fill()
+        CGRect(x: rect.minX, y: rect.maxY - thickness, width: rect.width, height: thickness).fill()
+        CGRect(x: rect.minX, y: rect.minY, width: thickness, height: rect.height).fill()
+        CGRect(x: rect.maxX - thickness, y: rect.minY, width: thickness, height: rect.height).fill()
     }
 
     private func drawIcon(_ result: SearchResult) {
