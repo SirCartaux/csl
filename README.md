@@ -66,6 +66,7 @@ window, field editor and focus is more direct in AppKit.
 - **Resizable and scalable:** drag the glowing panel edge or any corner. Every row, font, icon, border and the glow scales with it. The panel stays centered and remembers its scale.
 - **Fast sources:** apps, websites and commands are instantaneous; indexed folders answer in milliseconds; Spotlight files stream in (prefix ~30–100 ms, substring ~300 ms).
 - **Quick Look:** press `Space` on a file result after mouse selection, `Tab` or arrows. `Space`/`Esc` closes it; typing jumps back into the query.
+- **Clipboard history:** a persistent, 30 MB history of text, links, images and files. Open it with `⌘⇧V` from the launcher, the menu bar, or the `CLIPBOARD HISTORY` command; filter, pin, copy, delete or clear entries. Pinned entries survive eviction and concealed clipboard types are ignored.
 - **Native actions:** single click selects, double click or `Enter` opens, `⌘Enter` reveals in Finder, right click for Open / Show in Finder / Copy Path, drag files and URLs out of the launcher. Launches are asynchronous: the selected row turns green, presses in and shows a “LAUNCHING” pixel chase plus a uniform connected rectangular frame and three thin rectangular outline impulses until the app/file has opened.
 - **Live index:** FSEvents keeps indexed folders current — new, changed, renamed and deleted files show up in about a second, with catch-up after a restart.
 - **Smart local ranking:** match tiers, frequency, recency, query affinity, time of day and working-folder context. Commands are never boosted by usage.
@@ -150,6 +151,7 @@ when clicked.
 | Drag a result out | Drag files/apps/URLs into Finder or other apps (copy) |
 | **Drag the glowing panel edge/corner** | **Scale the whole launcher; the panel stays centered** |
 | `⌘,` | Open Settings while the launcher is open |
+| `⌘⇧V` | Open Clipboard History while the launcher is open |
 | Click outside | Close |
 
 Changing the query (letter, Backspace, paste) switches `Space` back to a literal

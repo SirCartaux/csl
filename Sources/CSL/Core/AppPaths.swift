@@ -16,11 +16,20 @@ enum AppPaths {
     static var indexFile: URL { baseDirectory.appendingPathComponent("index.json") }
     static var rankingFile: URL { baseDirectory.appendingPathComponent("ranking.json") }
     static var iconsDirectory: URL { baseDirectory.appendingPathComponent("icons", isDirectory: true) }
+    static var clipboardDirectory: URL { baseDirectory.appendingPathComponent("clipboard", isDirectory: true) }
+    static var clipboardBlobsDirectory: URL { clipboardDirectory.appendingPathComponent("blobs", isDirectory: true) }
+    static var clipboardIndexFile: URL { clipboardDirectory.appendingPathComponent("history.json") }
 
     static func prepare() {
         let fm = FileManager.default
         try? fm.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
         try? fm.createDirectory(at: iconsDirectory, withIntermediateDirectories: true)
+    }
+
+    static func prepareClipboard() {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: clipboardDirectory, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: clipboardBlobsDirectory, withIntermediateDirectories: true)
     }
 }
 
@@ -33,4 +42,6 @@ extension Notification.Name {
     static let cslIndexChanged = Notification.Name("csl.indexChanged")
     static let cslIndexLoaded = Notification.Name("csl.indexLoaded")
     static let cslWebsiteIconUpdated = Notification.Name("csl.websiteIconUpdated")
+    static let cslClipboardChanged = Notification.Name("csl.clipboardChanged")
+    static let cslOpenClipboardHistory = Notification.Name("csl.openClipboardHistory")
 }

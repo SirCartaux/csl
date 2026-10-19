@@ -147,6 +147,7 @@ final class ClosureButton: PixelButton {
 final class PixelField: NSView, NSTextFieldDelegate {
     let textField = PixelTextField(frame: .zero)
     var onSubmit: (() -> Void)?
+    var onTextChange: (() -> Void)?
     private var hasFocus = false
 
     var stringValue: String {
@@ -217,6 +218,10 @@ final class PixelField: NSView, NSTextFieldDelegate {
     func controlTextDidEndEditing(_ obj: Notification) {
         hasFocus = false
         needsDisplay = true
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        onTextChange?()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {

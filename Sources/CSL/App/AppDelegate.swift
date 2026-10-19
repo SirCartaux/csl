@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         buildStatusItem()
         installHotkey()
         installSettingsShortcut()
+        ClipboardHistoryStore.shared.start()
 
         engine.delegate = self
         engine.warmUp()
@@ -57,6 +58,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ResultRanker.shared.loadAsync()
         FaviconService.shared.prefetchMissing()
         observeSettings()
+
+        if let path = ProcessInfo.processInfo.environment["CSL_CLIPBOARD_SNAPSHOT"], !path.isEmpty {
+            ClipboardHistoryWindowController.shared.show()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.writeSnapshot(window: ClipboardHistoryWindowController.shared.nsWindow, to: path)
+                NSApp.terminate(nil)
+            }
+            return
+        }
 
         if let path = settingsSnapshotPath {
             SettingsWindowController.shared.show(tab: parsedSettingsTab())
@@ -123,6 +133,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let settingsShortcutMonitor {
             NSEvent.removeMonitor(settingsShortcutMonitor)
         }
+        ClipboardHistoryStore.shared.stop()
+        ClipboardHistoryStore.shared.flush()
         FileWatcher.shared.stopAll()
         FileIndex.shared.flush()
         ResultRanker.shared.flush()
@@ -180,6 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.hidePanel(restoreFocus: false)
             self?.showSettings()
         }
+        center.addObserver(forName: .cslOpenClipboardHistory, object: nil, queue: .main) { [weak self] _ in
+            self?.showClipboardHistory()
+        }
         for name in [Notification.Name.cslIndexLoaded, .cslIndexFinished] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.engine.refreshIndexResults()
@@ -193,6 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func showSettings() {
         hidePanel(restoreFocus: false)
+        ClipboardHistoryWindowController.shared.close(restoreFocus: false)
         SettingsWindowController.shared.show()
     }
 
@@ -209,6 +225,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         settingsShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags.contains(.command), flags.contains(.shift),
+               event.keyCode == 9, // V
+               self.panel.isVisible {
+                self.hidePanel(restoreFocus: false)
+                ClipboardHistoryWindowController.shared.show()
+                return nil
+            }
             guard flags.contains(.command),
                   event.keyCode == 43, // comma
                   self.panel.isVisible else { return event }
@@ -258,6 +281,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func showPanel() {
         if SettingsWindowController.shared.isVisible {
             SettingsWindowController.shared.close(restoreFocus: false)
+        }
+        if ClipboardHistoryWindowController.shared.isVisible {
+            ClipboardHistoryWindowController.shared.close(restoreFocus: false)
         }
         if isClosing {
             // Interrupt closing and resume interaction immediately.
@@ -457,6 +483,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.removeAllItems()
 
         menu.addItem(makeItem(title: "OPEN CSL", action: #selector(showFromMenu), key: ""))
+        let clipboardItem = makeItem(
+            title: "CLIPBOARD HISTORY…",
+            action: #selector(openClipboardHistoryFromMenu),
+            key: "v"
+        )
+        clipboardItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(clipboardItem)
         menu.addItem(makeItem(title: "EINSTELLUNGEN…", action: #selector(openSettingsFromMenu), key: ","))
 
         let bindings = hotkeyManager?.activeBindings.joined(separator: "  /  ") ?? "–"
@@ -496,6 +529,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func openSettingsFromMenu() {
         showSettings()
+    }
+
+    @objc private func openClipboardHistoryFromMenu() {
+        showClipboardHistory()
+    }
+
+    private func showClipboardHistory() {
+        hidePanel(restoreFocus: false)
+        SettingsWindowController.shared.close(restoreFocus: false)
+        ClipboardHistoryWindowController.shared.show()
     }
 
     @objc private func quit() {

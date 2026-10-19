@@ -64,6 +64,15 @@ final class CommandProvider {
             action: .run { NSApp.terminate(nil) }
         ),
         Command(
+            id: "cmd:clipboard",
+            title: "CLIPBOARD HISTORY",
+            subtitle: "TEXT, IMAGES, FILES · 30 MB",
+            keywords: ["clipboard", "zwischenablage", "history", "verlauf", "paste", "copy", "kopieren"],
+            glyph: .clipboard,
+            action: .run { NotificationCenter.default.post(name: .cslOpenClipboardHistory, object: nil) },
+            showsWhenEmpty: false
+        ),
+        Command(
             id: "cmd:csl-settings",
             title: "CSL SETTINGS",
             subtitle: "INDEX, FILTER, WEBSITES",
