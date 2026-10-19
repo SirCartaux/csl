@@ -83,8 +83,8 @@ window, field editor and focus is more direct in AppKit.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.6.0.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.6.0.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.6.1.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.6.1.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
@@ -216,7 +216,10 @@ run; default exclusions below.
 
 A speed slider from **0,25× (slow)** to **2,0× (fast)**, default **1,00×**.
 It adjusts the short open/close zoom and fade. Pointer, keyboard and click feedback
-share a restrained amber light treatment. macOS Reduce Motion disables movement.
+share a restrained amber light treatment. The motion button cycles between **SYSTEM**
+(follow macOS Reduce Motion), **IMMER AN** (always animate CSL), and **AUS**.
+This changes only CSL, not the macOS accessibility preference. Static hover feedback
+remains available with reduced motion.
 
 The small **ERGEBNIS-GLOW** for new result rows has its own controls:
 **on/off**, **intensity** (default 0,55) and **fade time** (default 0,30 s).

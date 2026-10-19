@@ -4,7 +4,10 @@ import QuartzCore
 /// A shared motion language. All animation is compositor-driven; no idle timer.
 enum InteractionMotion {
     private static let disabled = ProcessInfo.processInfo.environment["CSL_NO_PIXEL_ANIMATION"] == "1"
-    static var enabled: Bool { !disabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    static var enabled: Bool {
+        !disabled && SettingsStore.shared.motionPreference.allowsAnimation(
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    }
 
     static func transition(_ changes: () -> Void, duration: TimeInterval = 0.18) {
         CATransaction.begin()
@@ -164,7 +167,7 @@ final class InteractionEffectsView: NSView {
     }
 
     func pointerMoved(to point: CGPoint) {
-        guard active, InteractionMotion.enabled else { return }
+        guard active else { return }
         let now = CACurrentMediaTime()
         // Bound hover work on very high polling-rate mice; CA interpolates motion.
         guard now-lastPointerTime >= 1.0/120 else { return }
@@ -188,7 +191,7 @@ final class InteractionEffectsView: NSView {
         guard hoverFrame != rect else { return }
         let wasVisible = hoverFrame != nil
         hoverFrame = rect
-        guard active, InteractionMotion.enabled else { return }
+        guard active else { return }
         if let rect, !wasVisible {
             CATransaction.begin(); CATransaction.setDisableActions(true)
             hoverLight.frame = localList(rect)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 — 2026-10-19
+
+- Add a CSL-only System / Always On / Off motion preference with visible effective status.
+- Keep static pointer/hover feedback available when motion is reduced.
+- Verify that animations are actually attached and visible, rather than only testing cleanup with macOS Reduce Motion enabled.
+
 ## 0.6.0 — 2026-10-19
 
 - Replace the pixel-mask reveal with a short, interruptible zoom/lift/fade.

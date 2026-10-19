@@ -79,6 +79,7 @@ final class PixelSlider: NSView {
 // MARK: - Animation section
 
 final class AnimationSection: SettingsSection {
+    private let motionButton = ClosureButton("SYSTEM", style: .ghost) {}
     private let slider = PixelSlider()
     private let resetButton = ClosureButton("STANDARD 1,00X", style: .ghost) {}
     private let glowButton = ClosureButton("AN", style: .primary) {}
@@ -87,6 +88,17 @@ final class AnimationSection: SettingsSection {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        motionButton.setAction { [weak self] in
+            let next: MotionPreference
+            switch SettingsStore.shared.motionPreference {
+            case .system: next = .on
+            case .on: next = .off
+            case .off: next = .system
+            }
+            SettingsStore.shared.setMotionPreference(next)
+            self?.reload()
+        }
+        addSubview(motionButton)
         slider.minValue = SettingsStore.minPixelAnimationSpeed
         slider.maxValue = SettingsStore.maxPixelAnimationSpeed
         slider.onChange = { [weak self] _ in self?.needsDisplay = true }
@@ -128,6 +140,7 @@ final class AnimationSection: SettingsSection {
 
     override func layout() {
         super.layout()
+        motionButton.frame = CGRect(x: 0, y: 226, width: 140, height: 28)
         slider.frame = CGRect(x: 0, y: 104, width: min(380, bounds.width), height: 30)
         resetButton.frame = CGRect(x: 0, y: 276, width: 180, height: 28)
         glowButton.frame = CGRect(x: 0, y: 332, width: 70, height: 28)
@@ -155,8 +168,8 @@ final class AnimationSection: SettingsSection {
                  x: 0, y: 196, width: bounds.width, font: 8, color: Theme.textFaint)
         drawText("NEUE ERGEBNISSE BEKOMMEN EINEN KURZEN GLOW, NUR DIE NEUEN ZEILEN.",
                  x: 0, y: 214, width: bounds.width, font: 8, color: Theme.textFaint)
-        drawText("REDUZIERTE BEWEGUNG IN MACOS WIRD BERUECKSICHTIGT.",
-                 x: 0, y: 232, width: bounds.width, font: 8, color: Theme.textFaint)
+        let motionStatus = InteractionMotion.enabled ? "ANIMATIONEN AKTIV" : "BEWEGUNG REDUZIERT"
+        drawText(motionStatus, x: 154, y: 235, width: bounds.width - 154, font: 8, color: Theme.textFaint)
 
         drawText("1,00X IST DER STANDARD.", x: 194, y: 284, width: bounds.width - 194, font: 8, color: Theme.textFaint)
 
@@ -176,6 +189,14 @@ final class AnimationSection: SettingsSection {
     }
 
     override func reload() {
+        switch SettingsStore.shared.motionPreference {
+        case .system: motionButton.title = "SYSTEM"
+        case .on: motionButton.title = "IMMER AN"
+        case .off: motionButton.title = "AUS"
+        }
+        motionButton.toolTip = "System: macOS folgen. Immer an: Animationen nur in CSL aktivieren. Aus: ohne Bewegung."
+        motionButton.style = InteractionMotion.enabled ? .primary : .ghost
+        motionButton.needsDisplay = true
         slider.value = SettingsStore.shared.pixelAnimationSpeed
         glowButton.title = SettingsStore.shared.resultGlowEnabled ? "AN" : "AUS"
         glowButton.style = SettingsStore.shared.resultGlowEnabled ? .primary : .ghost

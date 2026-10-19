@@ -19,6 +19,18 @@ struct WebsiteEntry: Codable, Identifiable, Equatable {
     }
 }
 
+enum MotionPreference: String, Codable {
+    case system, on, off
+
+    func allowsAnimation(reduceMotion: Bool) -> Bool {
+        switch self {
+        case .system: return !reduceMotion
+        case .on: return true
+        case .off: return false
+        }
+    }
+}
+
 struct CSLSettings: Codable {
     var version: Int = 1
     var indexedFolders: [String] = []
@@ -26,6 +38,7 @@ struct CSLSettings: Codable {
     var ignoredExtensions: [String] = []
     var websites: [WebsiteEntry] = []
     var launcherScale: Double? = nil
+    var motionPreference: MotionPreference? = nil
     var pixelAnimationSpeed: Double? = nil
     var pixelAnimationSpeedV2: Double? = nil
     var resultGlowEnabled: Bool? = nil
@@ -102,6 +115,13 @@ final class SettingsStore {
         let clamped = min(max(value, Self.minPixelAnimationSpeed), Self.maxPixelAnimationSpeed)
         guard abs(pixelAnimationSpeed - clamped) > 0.0001 else { return }
         settings.pixelAnimationSpeedV2 = clamped
+        save(notify: false)
+    }
+
+    var motionPreference: MotionPreference { settings.motionPreference ?? .system }
+
+    func setMotionPreference(_ value: MotionPreference) {
+        settings.motionPreference = value
         save(notify: false)
     }
 
