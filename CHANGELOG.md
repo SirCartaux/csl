@@ -3,8 +3,8 @@
 ## Unreleased
 
 ### Launcher
-- Clear stale result rows as soon as the query changes, instead of briefly holding the previous query's hits while the new search starts.
-- The amber `>` prompt now gives a tiny pop and amber glow on every text edit.
+- Coalesce rapid query edits with a short settle window. The result list stays stable while typing instead of rebuilding for every letter, and stale-row actions stay blocked until the new query is displayed.
+- The amber `>` prompt now gives a smaller pop and amber glow on every text edit, anchored at the centre of the chevron.
 
 ## 0.6.2 — 2026-10-19
 

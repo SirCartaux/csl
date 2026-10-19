@@ -40,7 +40,7 @@ final class SearchPromptView: NSView {
         layer.removeAnimation(forKey: "promptGlowRadius")
 
         let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [1.0, 1.32, 1.0]
+        scale.values = [1.0, 1.18, 1.0]
         scale.keyTimes = [0, 0.32, 1]
         scale.duration = 0.22
         scale.timingFunction = CAMediaTimingFunction(name: .easeOut)

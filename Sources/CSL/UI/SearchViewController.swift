@@ -25,6 +25,7 @@ final class SearchViewController: NSViewController {
     private var displayedQuery = ""
     private var reservedResultRows = 0
     private var lastQueryEdit: CFTimeInterval = 0
+    private var queryWork: DispatchWorkItem?
     private var resultsAreCurrent: Bool { displayedQuery == searchField.stringValue }
     private let interactionEffects = InteractionEffectsView(frame: .zero)
     private var pixelOpenWork: DispatchWorkItem?
@@ -69,6 +70,7 @@ final class SearchViewController: NSViewController {
     }
 
     deinit {
+        queryWork?.cancel()
         if let quickLookMonitor {
             NSEvent.removeMonitor(quickLookMonitor)
         }
@@ -196,7 +198,7 @@ final class SearchViewController: NSViewController {
         searchPrompt.frame = CGRect(
             x: field.minX + Theme.ls(20) - promptPadding,
             y: field.minY + Theme.ls(20) - promptPadding,
-            width: promptUnit * 5 + promptPadding * 2,
+            width: promptUnit * 4 + promptPadding * 2,
             height: promptUnit * 5 + promptPadding * 2
         )
         updateCalculatorHint()
@@ -315,6 +317,8 @@ final class SearchViewController: NSViewController {
     // MARK: - Presentation
 
     func prepareForPresentation() {
+        queryWork?.cancel()
+        queryWork = nil
         cancelPixelAnimations()
         clearStatus()
         rootView.indexProgress = nil
@@ -516,6 +520,8 @@ final class SearchViewController: NSViewController {
     }
 
     func stopGlow() {
+        queryWork?.cancel()
+        queryWork = nil
         pinchAnchor = nil
         interactionEffects.stop()
         functionGraph.stopInteraction()
@@ -584,8 +590,7 @@ final class SearchViewController: NSViewController {
         guard !rootView.graphActive else { return }
         // An empty intermediate provider batch is not a new empty result set.
         // Keep the previous frame intact until replacements or a final miss arrive.
-        if results.isEmpty, isSearching, !self.results.isEmpty,
-           displayedQuery == searchField.stringValue {
+        if results.isEmpty, isSearching, !self.results.isEmpty {
             rootView.isSearching = true
             return
         }
@@ -1075,6 +1080,8 @@ extension SearchViewController: NSTextFieldDelegate {
         Log.debug("query: \"\(searchField.stringValue)\"")
         placeholderView.isHidden = !searchField.stringValue.isEmpty
         lastQueryEdit = CACurrentMediaTime()
+        queryWork?.cancel()
+        queryWork = nil
         cancelResultGlows()
         clearStatus()
         isNavigatingResults = false
@@ -1102,7 +1109,22 @@ extension SearchViewController: NSTextFieldDelegate {
             rootView.isSearching = false
             functionGraph.configure(searchField.stringValue)
         } else {
-            engine?.search(searchField.stringValue)
+            // Coalesce rapid edits so the list is not rebuilt for every letter.
+            // The current rows stay stable until the settled query has results
+            // (or a definitive miss), and actions are blocked by resultsAreCurrent.
+            engine?.cancel()
+            let query = searchField.stringValue
+            if query.isEmpty {
+                engine?.search("")
+            } else {
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self, self.searchField.stringValue == query else { return }
+                    self.queryWork = nil
+                    self.engine?.search(query)
+                }
+                queryWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: work)
+            }
         }
         updateCalculatorHint()
         refreshWindowSize()

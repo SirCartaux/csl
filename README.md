@@ -71,7 +71,7 @@ window, field editor and focus is more direct in AppKit.
 - **Smart local ranking:** match tiers, frequency, recency, query affinity, time of day and working-folder context. Commands are never boosted by usage.
 - **Real settings window** (search `CSL SETTINGS`, or use the menu bar): index folders with progress, percentage and ETA; ignore folders and extensions; add websites with automatically fetched favicons.
 - **Menu bar item:** open, settings, launch at login, keyboard shortcuts, quit.
-- **Pixel UI:** Silkscreen, hard edges, notched corners, hard shadows and an animated amber glow at 0% idle CPU. The amber `>` prompt pops and glows briefly on every edit.
+- **Pixel UI:** Silkscreen, hard edges, notched corners, hard shadows and an animated amber glow at 0% idle CPU. The amber `>` prompt pops and glows briefly on every edit, anchored at its centre.
 - **Motion and light:** a soft zoom/fade opens and closes the launcher. A warm light follows the pointer, selection and hover highlights glide between rows, typing lights the input edge, and clicks leave a brief ring. New results arrive with a gentle lift and glow; settings buttons have a tactile press. Effects use reusable Core Animation layers, pause when hidden, and respect macOS Reduce Motion.
 - **German and English search keywords** (`papierkorb`, `einstellungen`, `settings`, …), including localized app names such as `Festplattendienstprogramm` → **Disk Utility**.
 
