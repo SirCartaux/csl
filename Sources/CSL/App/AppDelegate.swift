@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let engine = SearchEngine()
     private var panel: SearchPanel!
     private var viewController: SearchViewController!
+    private var launchInProgress = false
+    private var launchCompletionScheduled = false
     private var hotkeyManager: HotkeyManager?
     private var statusItem: NSStatusItem?
 
@@ -290,6 +292,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func hidePanel(restoreFocus: Bool) {
         guard panel.isVisible, !isClosing else { return }
+        launchInProgress = false
+        launchCompletionScheduled = false
         isClosing = true
         viewController.dismissQuickLook()
         viewController.stopGlow()
@@ -366,26 +370,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Actions
 
     private func perform(_ result: SearchResult, reveal: Bool) {
-        hidePanel(restoreFocus: false)
+        guard !launchInProgress else { return }
+        launchInProgress = true
+        launchCompletionScheduled = false
+        viewController.markLaunching(result)
 
-        var didUse = false
+        let started = CACurrentMediaTime()
+        let query = engine.lastQuery
+
+        // Keep the row animation visible for at least a beat, then reveal the
+        // actual launch result. The launcher stays on screen until then.
+        func finish(_ success: Bool, record: Bool) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.launchInProgress, !self.launchCompletionScheduled else { return }
+                self.launchCompletionScheduled = true
+                let remaining = max(0, 0.85 - (CACurrentMediaTime() - started))
+                DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
+                    guard let self, self.launchInProgress else { return }
+                    self.launchInProgress = false
+                    self.launchCompletionScheduled = false
+                    self.viewController.finishLaunching(success: success)
+                    if success {
+                        if record {
+                            ResultRanker.shared.record(result, query: query, revealed: reveal)
+                        }
+                        self.hidePanel(restoreFocus: false)
+                    } else {
+                        self.panel.makeKeyAndOrderFront(nil)
+                        self.viewController.focus()
+                    }
+                }
+            }
+        }
+
         switch result.action {
         case .open(let url):
             if reveal {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
-                didUse = true
+                finish(true, record: true)
+            } else if url.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = true
+                NSWorkspace.shared.openApplication(
+                    at: url,
+                    configuration: configuration
+                ) { _, error in
+                    finish(error == nil, record: true)
+                }
             } else {
-                didUse = NSWorkspace.shared.open(url)
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = true
+                NSWorkspace.shared.open(
+                    url,
+                    configuration: configuration
+                ) { _, error in
+                    finish(error == nil, record: true)
+                }
             }
+
         case .reveal(let url):
             NSWorkspace.shared.activateFileViewerSelecting([url])
-            didUse = true
+            finish(true, record: true)
+
         case .run(let action):
             action()
-        }
-
-        if didUse {
-            ResultRanker.shared.record(result, query: engine.lastQuery, revealed: reveal)
+            finish(true, record: false)
         }
     }
 
@@ -393,6 +442,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func windowDidResignKey(_ notification: Notification) {
         guard notification.object as? NSWindow === panel, panel.isVisible, !isClosing else { return }
+        // Launching an app naturally moves key focus to it; keep CSL visible
+        // until the async launch completes and its row animation has played.
+        if launchInProgress { return }
         // A drag out of the panel temporarily takes key away; hide only after
         // the drag session has ended.
         if viewController.isDraggingResult || viewController.isPreviewing { return }

@@ -43,6 +43,7 @@ final class SearchViewController: NSViewController {
     private var indexWasScanning = false
     private var pendingResultFlash = false
     private var calculatorCopyText: String?
+    private var launchingResultID: String?
     private var suppressClick = false
     private(set) var isDraggingResult = false
     private var contextResultID: String?
@@ -336,6 +337,8 @@ final class SearchViewController: NSViewController {
         pendingResultFlash = false
         calculatorHint.isHidden = true
         calculatorCopyText = nil
+        launchingResultID = nil
+        searchField.isEditable = true
         rootView.calculatorActive = false
         rootView.graphActive = false
         searchPrompt.stop()
@@ -636,7 +639,7 @@ final class SearchViewController: NSViewController {
             if visible.location != NSNotFound {
                 for row in visible.location..<min(NSMaxRange(visible), results.count) {
                     (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? ResultRowView)?
-                        .configure(with: results[row], selected: row == selectedIndex)
+                        .configure(with: results[row], selected: row == selectedIndex, launching: results[row].id == launchingResultID)
                 }
             }
         }
@@ -964,6 +967,33 @@ final class SearchViewController: NSViewController {
         flashStatus("COPIED URL")
     }
 
+    // MARK: - Launch state
+
+    func markLaunching(_ result: SearchResult) {
+        guard results.contains(where: { $0.id == result.id }) else { return }
+        launchingResultID = result.id
+        queryWork?.cancel()
+        queryWork = nil
+        engine?.cancel()
+        rootView.isSearching = false
+        rootView.indexProgress = nil
+        searchActivity.stop()
+        searchField.isEditable = false
+        tableView.reloadData()
+        Log.debug("launch marked: \(result.title)")
+    }
+
+    func finishLaunching(success: Bool) {
+        launchingResultID = nil
+        searchField.isEditable = true
+        tableView.reloadData()
+        if !success {
+            flashStatus("COULD NOT OPEN")
+            focus()
+        }
+        Log.debug("launch finished: success=\(success)")
+    }
+
     // MARK: - Calculator copy
 
     @discardableResult
@@ -1190,7 +1220,7 @@ extension SearchViewController: NSTableViewDataSource, NSTableViewDelegate {
             rowView = ResultRowView()
             rowView.identifier = identifier
         }
-        rowView.configure(with: results[row], selected: row == selectedIndex)
+        rowView.configure(with: results[row], selected: row == selectedIndex, launching: results[row].id == launchingResultID)
         rowView.rowIndex = row
         rowView.menuProvider = { [weak self] row in
             self?.makeContextMenu(for: row)

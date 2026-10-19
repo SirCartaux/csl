@@ -4,7 +4,8 @@
 
 ### Launcher
 - Coalesce rapid query edits with a short settle window. The result list stays stable while typing instead of rebuilding for every letter, and stale-row actions stay blocked until the new query is displayed.
-- The amber `>` prompt now gives a smaller pop and amber glow on every text edit, anchored at the centre of the chevron.
+- The amber `>` prompt now gives a smaller pop and amber glow on every text edit, in a dedicated centre-anchored sublayer.
+- Start apps, files and URLs asynchronously. The selected row turns green, presses in, shows a pixel “LAUNCHING” chase and emits an expanding green outline while CSL waits for the launch to complete.
 
 ## 0.6.2 — 2026-10-19
 

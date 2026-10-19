@@ -1,20 +1,171 @@
 import AppKit
+import QuartzCore
 
 /// One result row: icon, title with match highlighting, dim path, selection bar.
+/// While a launch is in flight the row turns green, presses in slightly and
+/// emits a soft expanding outline.
 final class ResultRowView: NSView {
     private var result: SearchResult?
     private var isSelected = false
+    private var isLaunching = false
+    private var pendingLaunchAnimation = false
+
+    private let launchSpinner = LaunchSpinnerView(frame: .zero)
+    private let launchWash = CALayer()
+    private let launchOutline = CAShapeLayer()
 
     var rowIndex: Int = 0
     var menuProvider: ((Int) -> NSMenu?)?
 
     override var isFlipped: Bool { true }
 
-    func configure(with result: SearchResult, selected: Bool) {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = false
+
+        launchWash.backgroundColor = Theme.success.withAlphaComponent(0.10).cgColor
+        launchWash.opacity = 0
+        layer?.addSublayer(launchWash)
+
+        launchOutline.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        launchOutline.fillColor = nil
+        launchOutline.strokeColor = Theme.success.cgColor
+        launchOutline.lineWidth = max(1, Theme.ls(1.5))
+        launchOutline.lineJoin = .miter
+        launchOutline.shadowColor = Theme.success.cgColor
+        launchOutline.shadowOffset = .zero
+        launchOutline.shadowOpacity = 0.8
+        launchOutline.shadowRadius = Theme.ls(6)
+        launchOutline.opacity = 0
+        layer?.addSublayer(launchOutline)
+
+        addSubview(launchSpinner)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        let size = Theme.ls(16)
+        launchSpinner.frame = CGRect(
+            x: bounds.width - Theme.ls(24) - size,
+            y: floor((bounds.height - size) / 2),
+            width: size,
+            height: size
+        )
+
+        if pendingLaunchAnimation, bounds.width > 1 {
+            pendingLaunchAnimation = false
+            setLaunching(isLaunching, animated: true)
+        }
+
+        launchWash.frame = bounds
+        launchOutline.bounds = CGRect(origin: .zero, size: bounds.size)
+        launchOutline.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        updateOutlinePath()
+    }
+
+    func configure(with result: SearchResult, selected: Bool, launching: Bool = false) {
         self.result = result
         self.isSelected = selected
+        if isLaunching != launching {
+            isLaunching = launching
+            if bounds.width > 1 {
+                setLaunching(launching, animated: true)
+            } else {
+                pendingLaunchAnimation = true
+            }
+        }
+        needsLayout = true
         needsDisplay = true
     }
+
+    // MARK: - Launch state
+
+    private func setLaunching(_ launching: Bool, animated: Bool) {
+        if launching {
+            launchSpinner.start()
+            startOutline()
+        } else {
+            launchSpinner.stop()
+            stopOutline()
+        }
+        animatePress(launching, animated: animated)
+        animateWash(launching, animated: animated)
+    }
+
+    private func animateWash(_ launching: Bool, animated: Bool) {
+        launchWash.removeAnimation(forKey: "launchWash")
+        let target: Float = launching ? 1 : 0
+        launchWash.opacity = target
+        guard animated else { return }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = launching ? 0 : 1
+        fade.toValue = target
+        fade.duration = launching ? 0.30 : 0.22
+        fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        launchWash.add(fade, forKey: "launchWash")
+    }
+
+    private func animatePress(_ pressing: Bool, animated: Bool) {
+        guard let layer else { return }
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        var target = CATransform3DIdentity
+        if pressing {
+            target = CATransform3DTranslate(target, center.x, center.y, 0)
+            target = CATransform3DScale(target, 0.985, 0.985, 1)
+            target = CATransform3DTranslate(target, -center.x, -center.y, 0)
+            target = CATransform3DTranslate(target, 0, Theme.ls(1), 0)
+        }
+
+        let previous = layer.transform
+        layer.transform = target
+        guard animated else { return }
+
+        let press = CASpringAnimation(keyPath: "transform")
+        press.fromValue = previous
+        press.toValue = target
+        press.mass = 0.7
+        press.stiffness = pressing ? 320 : 220
+        press.damping = pressing ? 24 : 18
+        press.duration = press.settlingDuration
+        layer.add(press, forKey: "launchPress")
+    }
+
+    private func startOutline() {
+        updateOutlinePath()
+        launchOutline.removeAllAnimations()
+        launchOutline.opacity = 0
+
+        let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+        scale.values = [0.992, 1.025, 1.075]
+        scale.keyTimes = [0, 0.35, 1]
+        scale.duration = 0.82
+        scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        launchOutline.add(scale, forKey: "launchOutlineScale")
+
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0.95, 0.78, 0.0]
+        fade.keyTimes = [0, 0.45, 1]
+        fade.duration = 0.82
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        launchOutline.add(fade, forKey: "launchOutlineFade")
+    }
+
+    private func stopOutline() {
+        launchOutline.removeAllAnimations()
+        launchOutline.opacity = 0
+    }
+
+    private func updateOutlinePath() {
+        let rect = bounds.insetBy(dx: Theme.ls(3), dy: Theme.ls(3))
+        launchOutline.path = CGPath(rect: rect, transform: nil)
+    }
+
+    // MARK: - Drawing
 
     override func menu(for event: NSEvent) -> NSMenu? {
         menuProvider?(rowIndex)
@@ -23,14 +174,52 @@ final class ResultRowView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let result else { return }
 
-        if isSelected {
+        if isSelected || isLaunching {
             PixelDraw.fill(bounds, Theme.bgSelected)
-            PixelDraw.fill(CGRect(x: 0, y: 0, width: Theme.ls(3), height: bounds.height), Theme.accent)
+            PixelDraw.fill(
+                CGRect(x: 0, y: 0, width: Theme.ls(3), height: bounds.height),
+                isLaunching ? Theme.success : Theme.accent
+            )
         } else {
             PixelDraw.hLine(x: Theme.ls(52), y: bounds.maxY - Theme.ls(1), width: bounds.width - Theme.ls(52), color: Theme.line, thickness: max(1, Theme.ls(1)))
         }
 
+        if isLaunching {
+            PixelDraw.frame(
+                bounds.insetBy(dx: Theme.ls(2), dy: Theme.ls(2)),
+                thickness: max(1, Theme.ls(1)),
+                color: Theme.success.withAlphaComponent(0.62),
+                notch: Theme.ls(3)
+            )
+            PixelDraw.hLine(
+                x: Theme.ls(52),
+                y: bounds.maxY - Theme.ls(2),
+                width: bounds.width - Theme.ls(52),
+                color: Theme.success,
+                thickness: max(1, Theme.ls(2))
+            )
+        }
+
         drawIcon(result)
+
+        var titleRect = Layout.rowLabelRect(in: bounds)
+        var subtitleRect = Layout.rowSubtitleRect(in: bounds)
+        var launchLabelRect: CGRect?
+        if isLaunching {
+            let spinnerSize = Theme.ls(16)
+            let spinnerX = bounds.width - Theme.ls(24) - spinnerSize
+            let labelWidth = Theme.ls(88)
+            let label = CGRect(
+                x: spinnerX - Theme.ls(8) - labelWidth,
+                y: Theme.ls(12),
+                width: labelWidth,
+                height: Theme.ls(12)
+            )
+            launchLabelRect = label
+            let contentRight = label.minX - Theme.ls(8)
+            titleRect.size.width = max(10, contentRight - titleRect.minX)
+            subtitleRect.size.width = max(10, contentRight - subtitleRect.minX)
+        }
 
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
@@ -39,26 +228,41 @@ final class ResultRowView: NSView {
             string: result.title,
             attributes: [
                 .font: Theme.launcherDisplay(15),
-                .foregroundColor: Theme.text,
+                .foregroundColor: isLaunching ? Theme.success : Theme.text,
                 .paragraphStyle: paragraph
             ]
         )
-        for range in result.titleMatch where range.location + range.length <= title.length {
-            title.addAttribute(.foregroundColor, value: Theme.accent, range: range)
+        if !isLaunching {
+            for range in result.titleMatch where range.location + range.length <= title.length {
+                title.addAttribute(.foregroundColor, value: Theme.accent, range: range)
+            }
         }
-        title.draw(in: Layout.rowLabelRect(in: bounds))
+        title.draw(in: titleRect)
 
         let subtitle = NSAttributedString(
             string: result.subtitle,
             attributes: [
                 .font: Theme.launcherDisplay(9),
-                .foregroundColor: isSelected ? Theme.textDim : Theme.textFaint,
+                .foregroundColor: isLaunching
+                    ? Theme.success.withAlphaComponent(0.66)
+                    : (isSelected ? Theme.textDim : Theme.textFaint),
                 .paragraphStyle: paragraph
             ]
         )
-        subtitle.draw(in: Layout.rowSubtitleRect(in: bounds))
+        subtitle.draw(in: subtitleRect)
 
-        if isSelected {
+        if isLaunching, let launchLabelRect {
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .right
+            ("LAUNCHING" as NSString).draw(
+                in: launchLabelRect,
+                withAttributes: [
+                    .font: Theme.launcherDisplay(7.5),
+                    .foregroundColor: Theme.success,
+                    .paragraphStyle: paragraph
+                ]
+            )
+        } else if isSelected {
             PixelDraw.chevron(x: bounds.width - Theme.ls(21), y: Theme.ls(16), unit: Theme.ls(2), color: Theme.accent)
         }
     }
@@ -98,16 +302,25 @@ final class ResultRowView: NSView {
             PixelDraw.frame(
                 box,
                 thickness: max(1, Theme.ls(1)),
-                color: isSelected ? Theme.accentDim : Theme.border,
+                color: isLaunching ? Theme.success : (isSelected ? Theme.accentDim : Theme.border),
                 notch: Theme.ls(2)
             )
-            glyph.image(size: Theme.ls(16), color: isSelected ? Theme.accent : Theme.textDim).draw(
+            glyph.image(size: Theme.ls(16), color: isLaunching ? Theme.success : (isSelected ? Theme.accent : Theme.textDim)).draw(
                 in: CGRect(x: box.minX + Theme.ls(3), y: box.minY + Theme.ls(3), width: Theme.ls(16), height: Theme.ls(16)),
                 from: .zero,
                 operation: .sourceOver,
                 fraction: 1,
                 respectFlipped: true,
                 hints: nil
+            )
+        }
+
+        if isLaunching {
+            PixelDraw.frame(
+                box.insetBy(dx: -Theme.ls(2), dy: -Theme.ls(2)),
+                thickness: max(1, Theme.ls(1)),
+                color: Theme.success.withAlphaComponent(0.55),
+                notch: Theme.ls(2)
             )
         }
     }
