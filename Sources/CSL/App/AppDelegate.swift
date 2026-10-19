@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var launchCompletionScheduled = false
     private var hideCompletion: (() -> Void)?
     private var pasteAccessibilityRequested = false
+    private var lastExternalApp: NSRunningApplication?
+    private var workspaceObserver: NSObjectProtocol?
     private var hotkeyManager: HotkeyManager?
     private var statusItem: NSStatusItem?
 
@@ -54,6 +56,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         engine.delegate = self
         engine.warmUp()
+
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            lastExternalApp = front
+        }
+        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+            self.lastExternalApp = app
+        }
 
         FileIndex.shared.loadAsync {
             FileWatcher.shared.sync()
@@ -139,6 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         ClipboardHistoryStore.shared.stop()
         ClipboardHistoryStore.shared.flush()
+        if let workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+        }
         FileWatcher.shared.stopAll()
         FileIndex.shared.flush()
         ResultRanker.shared.flush()
@@ -306,6 +326,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             viewController.applyLauncherScale(safeScale)
         }
         viewController.prepareForPresentation()
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            lastExternalApp = front
+        }
         position(panel, on: screen)
         // Prepare the entrance before the panel appears.
         viewController.preparePixelOpen()
@@ -346,6 +370,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 NSApp.hide(nil)
             }
         }
+        let completion = hideCompletion
+        hideCompletion = nil
+        completion?()
     }
 
     private func position(_ window: NSWindow, on targetScreen: NSScreen? = nil) {
@@ -482,22 +509,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
 
+        let target = lastExternalApp
         hidePanel(restoreFocus: true) { [weak self] in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                self?.postPasteKeystroke()
+            guard let self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                if let target, !target.isTerminated {
+                    _ = target.activate(options: [])
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                    self.postPasteKeystroke(to: target)
+                }
             }
         }
     }
 
-    private func postPasteKeystroke() {
-        guard AXIsProcessTrusted() else { return }
-        let source = CGEventSource(stateID: .hidSystemState)
+    private func postPasteKeystroke(to target: NSRunningApplication?) {
+        guard AXIsProcessTrusted() else {
+            viewController.flashStatus("ACCESSIBILITY FOR PASTE")
+            return
+        }
+        let source = CGEventSource(stateID: .combinedSessionState)
         let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true) // V
         down?.flags = .maskCommand
-        down?.post(tap: .cghidEventTap)
-        usleep(30_000)
         let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false)
         up?.flags = .maskCommand
+
+        let front = NSWorkspace.shared.frontmostApplication
+        Log.debug("clipboard paste focus: \(front?.localizedName ?? "nil") target: \(target?.localizedName ?? "nil")")
+        down?.post(tap: .cghidEventTap)
+        usleep(30_000)
         up?.post(tap: .cghidEventTap)
         Log.debug("clipboard paste sent")
     }
