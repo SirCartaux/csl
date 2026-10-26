@@ -128,7 +128,7 @@ annotations; `Tools/generate_emoji.py` reproduces it.
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
-CSL is **ad-hoc signed and not notarized**. On first launch, **right-click CSL.app → Open**
+CSL is **signed but not notarized**. On first launch, **right-click CSL.app → Open**
 (or run `xattr -dr com.apple.quarantine /Applications/CSL.app` once). After that it
 starts normally.
 
