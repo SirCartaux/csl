@@ -1,8 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-10-26
+
+### Character picker (Fn / 🌐)
+- Embed the CEP character picker as the `CEPKit` SwiftPM target, sharing CSL's single menu-bar icon, bundle identifier and launch-at-login item.
+- Fn/Globe release opens a pixel panel above the text cursor; Fn+F1…F12 is ignored so brightness/media keys keep working.
+- Search across 1,900+ emoji, 2,600+ symbols and 100+ kaomoji with English/German keywords, umlaut folding and transliteration.
+- Recent/favorite tabs, skin tones, category rail, context menu and keyboard navigation.
+- Insert instantly with Unicode `postToPid` events; the panel stays open until Fn, `Esc` or an outside click.
+- Add CSL Setup & Permissions for Accessibility, Input Monitoring and the system Globe key.
+- Keep the app name, bundle identifier, icon and menu bar item as CSL; no second process and no second tray icon.
+
+## 0.6.3 — 2026-10-26
 
 ### Launcher
+- Start native file drags after four points of movement in any direction, without waiting for table-row drag tracking.
+- Use a compact, fixed icon/title preview and disable the return animation on failed or cancelled drops.
+- Freeze result updates from mouse-down through drop, then resume the latest batch on cancellation. Dragging cannot trigger a double-click open or a previously queued Enter action.
+- Publish existing file URLs and the legacy filename-list flavor eagerly for compatibility with media applications.
+- Dismiss immediately after an accepted drop without an extra close animation or restoring focus over the destination.
 - Pressing Enter while a query is still settling or searching now queues the open. As soon as the search completes, the first result opens automatically instead of requiring a second Enter. Editing, navigating or closing cancels the queued open.
 
 ## 0.6.2 — 2026-10-19

@@ -78,14 +78,53 @@ window, field editor and focus is more direct in AppKit.
 
 ---
 
+## Character picker (Fn / 🌐)
+
+CSL now embeds the **CEP** character picker as the `Sources/CEPKit` target. It
+keeps CSL's single menu-bar icon and launch-at-login item: there is no second
+app, no second process and no second tray icon.
+
+<p align="center">
+  <img src="docs/emoji-picker.png" alt="CSL character picker" width="92%">
+</p>
+
+- **Fn/Globe opens above the text cursor** when the key is released. Fn+F1…F12
+  is left alone, so brightness and media keys keep working.
+- **Instant insertion.** The chosen character is posted as a Unicode keyboard
+  event straight to the previously focused app — no clipboard round-trip and no
+  visible delay. The picker stays open so several characters can be picked in a
+  row.
+- **Close** with Fn again, `Esc`, or a click outside the panel.
+- **Search** in English and German, including umlauts and transliterations
+  (`grün`, `gruen`, `grun`), plus Unicode names for symbols.
+- **Categories:** recent, favorites, smileys, people, nature, food, activity,
+  travel, objects, symbols, flags and kaomoji.
+- **Skin tones:** default plus five tones, applied as the exact pre-composed
+  sequence. `⌘`-click or `⌘D` pins a favorite; `⌘↩` copies instead of inserting.
+- **One setup window** (menu bar → Character Picker → Setup & Permissions…) for
+  Accessibility, Input Monitoring and the system Globe key.
+
+macOS needs two permissions for the caret-aware picker: **Accessibility** for
+the caret rectangle and Unicode injection, and **Input Monitoring** for the Fn
+HID report. The setup window links to both panes. The system Globe key must be
+set to **Do Nothing**; the setup button writes `AppleFnUsageType = 0`, after
+which macOS may require a logout/restart.
+
+The picker is a separate SwiftPM target so its `Theme`, `Log` and pixel helpers
+cannot collide with CSL's. The emoji database (`Resources/emoji.json`,
+~880 KiB) is generated from Unicode 18 emoji-test and CLDR English/German
+annotations; `Tools/generate_emoji.py` reproduces it.
+
+---
+
 ## Download
 
 [**Get the latest version of CSL →**](https://github.com/SirCartaux/csl/releases/latest)
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.6.2.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.6.2.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.7.0.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.7.0.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 

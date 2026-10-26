@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import CEPKit
 import QuartzCore
 import ServiceManagement
 
@@ -15,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var workspaceObserver: NSObjectProtocol?
     private var hotkeyManager: HotkeyManager?
     private var statusItem: NSStatusItem?
+    private var emojiPicker: EmojiPickerFeature?
 
     private var snapshotPath: String?
     private var queryArgument: String?
@@ -144,6 +146,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 IndexCoordinator.shared.indexMissing()
             }
         }
+
+        if shouldStartEmojiPicker() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                self?.startEmojiPicker()
+            }
+        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -151,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        emojiPicker?.stop()
         if let settingsShortcutMonitor {
             NSEvent.removeMonitor(settingsShortcutMonitor)
         }
@@ -183,6 +192,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         viewController.onPaste = { [weak self] in
             self?.pasteClipboardIntoFocusedApp()
+        }
+        viewController.onDragDismiss = { [weak self] in
+            guard let self else { return }
+            self.viewController.cancelPendingOpen()
+            self.viewController.stopGlow()
+            self.engine.cancel()
+            self.panel.orderOut(nil)
         }
         viewController.onDragOut = { [weak self] result in
             guard let self else { return }
@@ -562,6 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.removeAllItems()
 
         menu.addItem(makeItem(title: "OPEN CSL", action: #selector(showFromMenu), key: ""))
+        menu.addItem(makeEmojiPickerMenuItem())
         let clipboardItem = makeItem(
             title: "CLIPBOARD HISTORY…",
             action: #selector(openClipboardHistoryFromMenu),
@@ -594,6 +611,107 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         menu.addItem(.separator())
         menu.addItem(makeItem(title: "QUIT CSL", action: #selector(quit), key: ""))
+    }
+
+    private func makeEmojiPickerMenuItem() -> NSMenuItem {
+        let root = NSMenuItem(title: "CHARACTER PICKER", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.addItem(makeItem(title: "OPEN", action: #selector(showEmojiPickerFromMenu), key: ""))
+        submenu.addItem(makeItem(title: "SETUP & PERMISSIONS…", action: #selector(showEmojiSetupFromMenu), key: ""))
+        if let picker = emojiPicker {
+            let fn = makeItem(title: "FN  \(picker.fnDetection)", action: nil, key: "")
+            fn.isEnabled = false
+            submenu.addItem(fn)
+            let globe = makeItem(
+                title: picker.systemGlobeKeyHandedOver ? "GLOBE KEY  READY" : "GLOBE KEY  SETUP NEEDED",
+                action: nil,
+                key: ""
+            )
+            globe.isEnabled = false
+            submenu.addItem(globe)
+        } else {
+            let status = makeItem(title: "STARTING…", action: nil, key: "")
+            status.isEnabled = false
+            submenu.addItem(status)
+        }
+        root.submenu = submenu
+        return root
+    }
+
+    @objc private func showEmojiPickerFromMenu() {
+        emojiPicker?.show()
+    }
+
+    @objc private func showEmojiSetupFromMenu() {
+        emojiPicker?.showSetup()
+    }
+
+    private func shouldStartEmojiPicker() -> Bool {
+        let arguments = CommandLine.arguments
+        if arguments.contains("--emoji-show") || arguments.contains("--emoji-snapshot")
+            || arguments.contains("--emoji-setup") || arguments.contains("--emoji-setup-snapshot") {
+            return true
+        }
+        if ProcessInfo.processInfo.environment["CSL_CLIPBOARD_SNAPSHOT"] != nil {
+            return false
+        }
+        let testFlags = [
+            "--snapshot", "--selftest", "--bench", "--index-folder",
+            "--settings-snapshot", "--menu-test", "--drag-test",
+            "--watch-test", "--watch-check", "--rank-test", "--fetch-icon"
+        ]
+        return !testFlags.contains { arguments.contains($0) }
+    }
+
+    private func startEmojiPicker() {
+        guard emojiPicker == nil else { return }
+        let picker = EmojiPickerFeature(brand: "CSL")
+        picker.start(showSetupIfNeeded: !CommandLine.arguments.contains("--emoji-no-setup"))
+        emojiPicker = picker
+        handleEmojiTestArguments(picker)
+    }
+
+    private func handleEmojiTestArguments(_ picker: EmojiPickerFeature) {
+        let arguments = CommandLine.arguments
+        let query = argumentValue("--emoji-query")
+        let category = argumentValue("--emoji-category")
+        let skin = argumentValue("--emoji-skin").flatMap(Int.init)
+        let show = { picker.show(query: query, category: category, skinTone: skin) }
+
+        if arguments.contains("--emoji-show") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: show)
+        }
+        if arguments.contains("--emoji-setup") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                picker.showSetup()
+            }
+        }
+        if let index = arguments.firstIndex(of: "--emoji-setup-snapshot"), index + 1 < arguments.count {
+            let path = arguments[index + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+                picker.showSetup()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+                    self?.writeSnapshot(window: picker.setupWindow, to: path)
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+        if let index = arguments.firstIndex(of: "--emoji-snapshot"), index + 1 < arguments.count {
+            let path = arguments[index + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+                show()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                    self?.writeSnapshot(window: picker.panelWindow, to: path)
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+
+    private func argumentValue(_ flag: String) -> String? {
+        let arguments = CommandLine.arguments
+        guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+        return arguments[index + 1]
     }
 
     private func makeItem(title: String, action: Selector?, key: String) -> NSMenuItem {

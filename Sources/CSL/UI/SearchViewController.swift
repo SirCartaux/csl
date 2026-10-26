@@ -8,6 +8,7 @@ final class SearchViewController: NSViewController {
     var onPaste: (() -> Void)?
     var onChoose: ((SearchResult, Bool) -> Void)?
     var onDragOut: ((SearchResult) -> Void)?
+    var onDragDismiss: (() -> Void)?
 
     let searchField = PixelTextField(frame: .zero)
 
@@ -60,6 +61,7 @@ final class SearchViewController: NSViewController {
     private var previewIsOpen = false
     private var quickLookMonitor: Any?
     private var draggedResult: SearchResult?
+    private var deferredResults: (results: [SearchResult], isSearching: Bool, query: String)?
 
     var isPreviewing: Bool { previewIsOpen }
 
@@ -302,8 +304,14 @@ final class SearchViewController: NSViewController {
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.dataSource = self
         tableView.delegate = self
-        tableView.target = self
-        tableView.action = #selector(rowClicked)
+        tableView.onClick = { [weak self] row in self?.selectResult(at: row) }
+        tableView.dragItemProvider = { [weak self] row, point in
+            guard let self, self.resultsAreCurrent, self.results.indices.contains(row) else { return nil }
+            return ResultDragging.item(for: self.results[row], at: point)
+        }
+        tableView.onDragWillStart = { [weak self] row in self?.beginResultDrag(at: row) }
+        tableView.onDragEnded = { [weak self] operation in self?.endResultDrag(operation: operation) }
+        tableView.onTrackingEnded = { [weak self] in self?.resumeDeferredResults() }
         tableView.onDoubleClick = { [weak self] row in
             self?.openResult(at: row)
         }
@@ -343,6 +351,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Presentation
 
     func prepareForPresentation() {
+        deferredResults = nil
         queryWork?.cancel()
         queryWork = nil
         pendingOpenAfterSearch = false
@@ -627,6 +636,12 @@ final class SearchViewController: NSViewController {
     // MARK: - Results
 
     func apply(results: [SearchResult], isSearching: Bool) {
+        // Search/index callbacks may arrive inside AppKit's tracking run loop.
+        // Keep the clicked identity, row geometry and window fixed until release.
+        if tableView.isTrackingMouse || isDraggingResult {
+            deferredResults = (results, isSearching, searchField.stringValue)
+            return
+        }
         guard !rootView.graphActive else { return }
         // An empty intermediate provider batch is not a new empty result set.
         // Keep the previous frame intact until replacements or a final miss arrive.
@@ -757,10 +772,9 @@ final class SearchViewController: NSViewController {
         onChoose?(results[selectedIndex], reveal)
     }
 
-    @objc private func rowClicked() {
+    private func selectResult(at row: Int) {
         pendingOpenAfterSearch = false
         guard resultsAreCurrent, !suppressClick else { return }
-        let row = tableView.clickedRow
         guard results.indices.contains(row) else { return }
         selectedIndex = row
         userNavigated = true
@@ -773,7 +787,7 @@ final class SearchViewController: NSViewController {
     }
 
     private func openResult(at row: Int) {
-        guard resultsAreCurrent, results.indices.contains(row) else { return }
+        guard resultsAreCurrent, !suppressClick, results.indices.contains(row) else { return }
         selectedIndex = row
         tableView.reloadData()
         Log.debug("row double-clicked: \(row)")
@@ -1448,82 +1462,49 @@ extension SearchViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard resultsAreCurrent, results.indices.contains(row) else { return nil }
-        switch results[row].action {
-        case .open(let url), .reveal(let url):
-            return url as NSURL
-        case .run:
-            // Commands are not files, but making them draggable as text keeps
-            // a drag gesture from being interpreted as a click that runs them.
-            let item = NSPasteboardItem()
-            item.setString(results[row].title, forType: .string)
-            return item
-        }
+        return ResultDragging.writer(for: results[row])
     }
 
-    func tableView(
-        _ tableView: NSTableView,
-        draggingSession session: NSDraggingSession,
-        willBeginAt screenPoint: NSPoint,
-        forRowIndexes rowIndexes: IndexSet
-    ) {
+    func beginResultDrag(at row: Int) {
+        guard resultsAreCurrent, results.indices.contains(row) else { return }
         suppressClick = true
+        pendingOpenAfterSearch = false
         isDraggingResult = true
-        rootView.statusOverride = nil
-        if let row = rowIndexes.first, results.indices.contains(row) {
-            draggedResult = results[row]
-        } else {
-            draggedResult = nil
-        }
+        draggedResult = results[row]
+        clearStatus()
+        cancelResultGlows()
+        cancelPixelAnimations()
+        interactionEffects.stop()
+        glowView.stopPulse()
+        Log.debug("drag began: \(results[row].title)")
     }
 
-    func tableView(
-        _ tableView: NSTableView,
-        draggingSession session: NSDraggingSession,
-        endedAt screenPoint: NSPoint,
-        operation: NSDragOperation
-    ) {
-        if !operation.isEmpty, let draggedResult {
-            onDragOut?(draggedResult)
-        }
+    func endResultDrag(operation: NSDragOperation) {
+        let result = draggedResult
         draggedResult = nil
         isDraggingResult = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self else { return }
-            guard let window = self.view.window, !window.isKeyWindow else { return }
-            self.onClose?()
-        }
-    }
-}
-
-// MARK: - Table view
-
-final class ResultTableView: NSTableView {
-    var onMouseDown: (() -> Void)?
-    var onDoubleClick: ((Int) -> Void)?
-    var contextMenuProvider: ((Int) -> NSMenu?)?
-    var onScroll: (() -> Void)?
-
-    override func scrollWheel(with event: NSEvent) {
-        onScroll?()
-        super.scrollWheel(with: event)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        onMouseDown?()
-        let row = self.row(at: convert(event.locationInWindow, from: nil))
-        super.mouseDown(with: event)
-        if event.clickCount == 2, row >= 0 {
-            DispatchQueue.main.async { [weak self] in
-                self?.onDoubleClick?(row)
+        Log.debug("drag ended: \(operation.rawValue)")
+        if !operation.isEmpty, let result {
+            // Close without an animation or focus restoration: the receiving
+            // application owns the completed drop and must retain focus.
+            deferredResults = nil
+            onDragDismiss?()
+            onDragOut?(result)
+        } else {
+            resumeDeferredResults()
+            if let window = view.window, !window.isKeyWindow {
+                onDragDismiss?()
+            } else if view.window?.isVisible == true {
+                startGlow()
             }
         }
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
-        let point = convert(event.locationInWindow, from: nil)
-        let row = self.row(at: point)
-        guard row >= 0 else { return nil }
-        return contextMenuProvider?(row)
+    private func resumeDeferredResults() {
+        guard !isDraggingResult, !tableView.isTrackingMouse, let update = deferredResults else { return }
+        deferredResults = nil
+        guard update.query == searchField.stringValue else { return }
+        apply(results: update.results, isSearching: update.isSearching)
     }
 }
 
