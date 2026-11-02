@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — 2026-10-26
+
+### Aliases
+- Add custom aliases to applications and files from the result context menu. Type an alias in the launcher to find the target immediately.
+- Manage aliases in **Settings → ALIASSE**: add a target with the app/file picker, see its icon and path, and remove aliases.
+- Aliases persist in `aliases.json`, match case-insensitively and reuse the normal app/file result identity so a target never appears twice.
+
 ## 0.7.0 — 2026-10-26
 
 ### Character picker (Fn / 🌐)

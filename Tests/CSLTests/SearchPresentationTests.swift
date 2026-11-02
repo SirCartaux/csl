@@ -33,14 +33,86 @@ final class SearchPresentationTests: XCTestCase {
         controller.apply(results: [result("document")], isSearching: true)
         XCTAssertEqual(controller.numberOfRows(in: table), 1)
         XCTAssertEqual(controller.preferredContentHeight, height)
-        XCTAssertTrue(chosen.isEmpty)
+        XCTAssertEqual(chosen, ["document"])
 
-        // The Enter pressed while searching was queued; completion opens the
-        // first result without another key press.
+        // The first partial batch consumes Enter; final ranking cannot reopen it.
         controller.apply(results: [result("document")], isSearching: false)
         XCTAssertEqual(chosen, ["document"])
         XCTAssertLessThan(controller.preferredContentHeight, height)
         controller.stopGlow()
+    }
+
+    func testEnterOpensSelectedPartialResultSynchronously() {
+        _ = NSApplication.shared
+        let controller = SearchViewController()
+        _ = controller.view
+        controller.setSearchText("doc")
+        controller.apply(results: [result("doc1"), result("doc2")], isSearching: true)
+        _ = controller.control(controller.searchField, textView: NSTextView(),
+                               doCommandBy: #selector(NSResponder.moveDown(_:)))
+        var chosen: [(String, Bool)] = []
+        controller.onChoose = { chosen.append(($0.id, $1)) }
+        controller.openSelectionWhenAvailable(reveal: true)
+        XCTAssertEqual(chosen.map(\.0), ["doc2"])
+        XCTAssertEqual(chosen.map(\.1), [true])
+        controller.apply(results: [result("doc3")], isSearching: false)
+        XCTAssertEqual(chosen.count, 1)
+        controller.stopGlow()
+    }
+
+    func testQueuedEnterIsCancelledByEditingAndUsesFirstBatchOnly() {
+        _ = NSApplication.shared
+        let controller = SearchViewController()
+        _ = controller.view
+        var chosen: [String] = []
+        controller.onChoose = { result, _ in chosen.append(result.id) }
+        controller.setSearchText("missing")
+        controller.openSelectionWhenAvailable(reveal: false)
+        controller.setSearchText("new")
+        controller.apply(results: [result("new1")], isSearching: true)
+        XCTAssertTrue(chosen.isEmpty)
+        controller.setSearchText("later")
+        controller.openSelectionWhenAvailable(reveal: false)
+        controller.apply(results: [], isSearching: true)
+        XCTAssertTrue(chosen.isEmpty)
+        controller.apply(results: [result("later1")], isSearching: true)
+        XCTAssertEqual(chosen, ["later1"])
+        controller.apply(results: [result("later2")], isSearching: false)
+        XCTAssertEqual(chosen, ["later1"])
+        controller.stopGlow()
+    }
+
+    func testEnterFlushesTypingDebounceAndCancellationStopsRemainingProviders() {
+        final class Delegate: SearchEngineDelegate {
+            let controller: SearchViewController
+            var batches = 0
+            init(_ controller: SearchViewController) { self.controller = controller }
+            func searchEngine(_ engine: SearchEngine, didUpdate results: [SearchResult], isSearching: Bool) {
+                batches += 1
+                controller.apply(results: results, isSearching: isSearching)
+            }
+        }
+        _ = NSApplication.shared
+        let controller = SearchViewController(), engine = SearchEngine()
+        controller.engine = engine
+        _ = controller.view
+        let delegate = Delegate(controller)
+        engine.delegate = delegate
+        var chosen: [String] = []
+        var lateProgress = 0
+        engine.onIndexProgress = { _, _, _ in if !chosen.isEmpty { lateProgress += 1 } }
+        controller.onChoose = { result, _ in
+            engine.cancel()
+            chosen.append(result.id)
+        }
+        controller.setSearchText("clipboard")
+        XCTAssertEqual(delegate.batches, 0)
+        controller.openSelectionWhenAvailable(reveal: false)
+        XCTAssertEqual(chosen, ["cmd:clipboard"])
+        XCTAssertEqual(delegate.batches, 1)
+        XCTAssertEqual(lateProgress, 0)
+        controller.stopGlow()
+        engine.cancel()
     }
 
     func testFinalMissClearsRetainedRowsAndQueryResetIsImmediate() {

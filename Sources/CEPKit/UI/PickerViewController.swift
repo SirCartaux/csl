@@ -8,6 +8,7 @@ final class PickerViewController: NSViewController, NSTextFieldDelegate {
         }
     }
     var onClose: (() -> Void)?
+    var onReturnToTarget: ((UInt16, NSEvent.ModifierFlags) -> Void)?
     /// Return `true` when the character was typed into the target app.
     var onInsert: ((EmojiItem, String) -> Bool)?
 
@@ -449,6 +450,15 @@ final class PickerViewController: NSViewController, NSTextFieldDelegate {
 
     // MARK: - Keyboard
 
+    @discardableResult
+    func handleReturnToTarget(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown, event.keyCode == 36 || event.keyCode == 76 else { return false }
+        if !event.isARepeat {
+            onReturnToTarget?(event.keyCode, event.modifierFlags.intersection(.deviceIndependentFlagsMask))
+        }
+        return true
+    }
+
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -459,20 +469,13 @@ final class PickerViewController: NSViewController, NSTextFieldDelegate {
                 return event
             }
 
+            if self.handleReturnToTarget(event) { return nil }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let hasCommand = flags.contains(.command)
 
             switch event.keyCode {
             case 53: // escape
                 self.onClose?()
-                return nil
-
-            case 36, 76: // return / keypad enter
-                if hasCommand {
-                    if let item = self.grid.selectedItem { self.copy(item) }
-                } else if let item = self.grid.selectedItem {
-                    self.activate(item, modifiers: [], point: self.grid.selectedItemPoint)
-                }
                 return nil
 
             case 126: // up

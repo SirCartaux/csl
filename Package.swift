@@ -29,6 +29,7 @@ let package = Package(
                 .linkedFramework("ServiceManagement")
             ]
         ),
-        .testTarget(name: "CSLTests", dependencies: ["CSL"])
+        .testTarget(name: "CSLTests", dependencies: ["CSL"]),
+        .testTarget(name: "CEPKitTests", dependencies: ["CEPKit"])
     ]
 )

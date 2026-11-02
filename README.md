@@ -57,7 +57,7 @@ window, field editor and focus is more direct in AppKit.
 
 ## Features
 
-- **Global hotkeys:** `⌘Space` with an `⌥Space` fallback — no Accessibility permission.
+- **Global hotkey:** `⌘Space` — no Accessibility permission. `⌥Space` stays available to other apps.
 - **Instant:** pre-warmed panel, visible in ~25–35 ms, search field focused immediately.
 - **First-screen result cache:** up to 7 file hits per query are kept in a 30 MB in-memory LRU, so a repeated search paints its first screenful immediately; only a finished scan is allowed to fill the cache.
 - **Streaming ranked file results:** every likely file hit is added as the index scan finds it, at the position the ranking rules assign — not silently capped at the first 16.
@@ -67,7 +67,7 @@ window, field editor and focus is more direct in AppKit.
 - **Fast sources:** apps, websites and commands are instantaneous; indexed folders answer in milliseconds; Spotlight files stream in (prefix ~30–100 ms, substring ~300 ms).
 - **Quick Look:** press `Space` on a file result after mouse selection, `Tab` or arrows. `Space`/`Esc` closes it; typing jumps back into the query.
 - **Clipboard history:** a persistent, 30 MB history of text, links, images and files, built directly into the launcher. Open it with the clipboard button next to `CMD + SPACE`, `⌘⇧V`, the menu bar, or the `CLIPBOARD HISTORY` command; the launcher field filters it. Click a row or press `Enter` to copy **and paste into the previously focused app**. Pin, delete or clear entries; pinned entries survive eviction and concealed clipboard types are ignored.
-- **Native actions:** single click selects, double click or `Enter` opens, `⌘Enter` reveals in Finder, right click for Open / Show in Finder / Copy Path, drag files and URLs out of the launcher. Launches are asynchronous: the selected row turns green, presses in and shows a “LAUNCHING” pixel chase plus a uniform connected rectangular frame and three thin rectangular outline impulses until the app/file has opened.
+- **Native actions:** single click selects, double click or `Enter` opens, `⌘Enter` reveals in Finder, right click for Open / Show in Finder / Copy Path, drag files and URLs out of the launcher. Launches are asynchronous. When opening an application, website or file, all launcher chrome and other results disappear immediately; only the chosen row stays in its original position with its “LAUNCHING” pixel chase. CSL dismisses it after that application has a visible window, rather than merely a running process. Failed launches restore the search; `Esc` or the launcher hotkey can dismiss a windowless application’s pending indicator. Commands and Finder reveal actions retain their brief row feedback.
 - **Live index:** FSEvents keeps indexed folders current — new, changed, renamed and deleted files show up in about a second, with catch-up after a restart.
 - **Smart local ranking:** match tiers, frequency, recency, query affinity, time of day and working-folder context. Commands are never boosted by usage.
 - **Real settings window** (search `CSL SETTINGS`, or use the menu bar): index folders with progress, percentage and ETA; ignore folders and extensions; add websites with automatically fetched favicons.
@@ -94,13 +94,14 @@ app, no second process and no second tray icon.
   event straight to the previously focused app — no clipboard round-trip and no
   visible delay. The picker stays open so several characters can be picked in a
   row.
+- **Enter** closes the picker immediately and forwards Return to the original text field, without inserting another emoji. Modifier keys are preserved (for example, Shift+Enter).
 - **Close** with Fn again, `Esc`, or a click outside the panel.
 - **Search** in English and German, including umlauts and transliterations
   (`grün`, `gruen`, `grun`), plus Unicode names for symbols.
 - **Categories:** recent, favorites, smileys, people, nature, food, activity,
   travel, objects, symbols, flags and kaomoji.
 - **Skin tones:** default plus five tones, applied as the exact pre-composed
-  sequence. `⌘`-click or `⌘D` pins a favorite; `⌘↩` copies instead of inserting.
+  sequence. `⌘`-click or `⌘D` pins a favorite; `⌘C` copies the selected character.
 - **One setup window** (menu bar → Character Picker → Setup & Permissions…) for
   Accessibility, Input Monitoring and the system Globe key.
 
@@ -123,8 +124,8 @@ annotations; `Tools/generate_emoji.py` reproduces it.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.7.0.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.7.0.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.7.1.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.7.1.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
@@ -133,7 +134,7 @@ CSL is **signed but not notarized**. On first launch, **right-click CSL.app → 
 starts normally.
 
 > **Important:** `⌘Space` is still owned by Spotlight by default. Either disable
-> Spotlight (see below) or use `⌥Space` right away.
+> the Spotlight shortcut (see below), or open CSL through its menu bar item.
 
 ---
 
@@ -165,7 +166,7 @@ macOS reserves `⌘Space` for Spotlight. Disable it once:
 > **System Settings → Keyboard → Keyboard Shortcuts… → Spotlight →
 > uncheck “Show Spotlight search”**
 
-Until then, **`⌥Space`** works immediately. The CSL menu bar item shows a warning
+Until then, open CSL through its menu bar item. It shows a warning
 while the Spotlight shortcut is still active and opens the right settings page
 when clicked.
 
@@ -175,11 +176,11 @@ when clicked.
 
 | Input | Action |
 |---|---|
-| `⌘Space` / `⌥Space` | Open / close the panel |
+| `⌘Space` | Open / close the panel |
 | Type | Search (apps and websites instantly, index files in ~5–40 ms, Spotlight streams in) |
 | `↑` / `↓` | Move selection |
 | `Tab` / `⇧Tab` | Select the first result, then move the selection |
-| `Enter` | Open the selection (always, including after mouse selection) |
+| `Enter` | Open the current selection immediately, even while more results are loading; if no current result exists, open the first arriving hit |
 | `⌘Enter` | Reveal in Finder |
 | `Space` | Quick Look for a file result (after mouse selection, `Tab` or arrows); press again to close; otherwise a space in the query |
 | `⌘A` | Select the whole search text |
@@ -361,7 +362,7 @@ Sources/CSL/
   App/          AppDelegate (window, hotkey, menu, debug modes), main.swift
   Core/         SearchResult, FuzzyMatcher, SettingsStore, AppPaths,
                 SearchExclusions
-  Hotkey/       HotkeyManager (Carbon, ⌘Space + ⌥Space)
+  Hotkey/       HotkeyManager (Carbon, ⌘Space)
   Search/       AppProvider, FileProvider, CommandProvider, WebsiteProvider,
                 FileIndex, FolderIndexer, IndexCoordinator, FaviconService,
                 SearchEngine, ResultRanker

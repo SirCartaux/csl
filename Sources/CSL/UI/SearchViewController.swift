@@ -50,6 +50,8 @@ final class SearchViewController: NSViewController {
     private var calculatorCopyText: String?
     private var launchingResultID: String?
     private var launchPulseView: LaunchPulseView?
+    private var isolatedLaunchRow: ResultRowView?
+    private var launchHiddenViews: [(NSView, Bool)] = []
     private var pendingOpenAfterSearch = false
     private var pendingOpenReveal = false
     private var suppressClick = false
@@ -62,8 +64,10 @@ final class SearchViewController: NSViewController {
     private var quickLookMonitor: Any?
     private var draggedResult: SearchResult?
     private var deferredResults: (results: [SearchResult], isSearching: Bool, query: String)?
+    private var deferredIndexProgress: (scanned: Int, total: Int, done: Bool)?
 
     var isPreviewing: Bool { previewIsOpen }
+    private(set) var isPresentingAliasPrompt = false
 
     var animationsEnabled: Bool {
         InteractionMotion.enabled
@@ -149,7 +153,7 @@ final class SearchViewController: NSViewController {
         rootView.addGestureRecognizer(graphPinch)
         rootView.addSubview(interactionEffects)
         interactionEffects.onPointerMove = { [weak self] point in
-            guard let self, let point, !self.rootView.graphActive else {
+            guard let self, let point, self.launchingResultID == nil, !self.rootView.graphActive else {
                 self?.interactionEffects.setHover(nil)
                 return
             }
@@ -162,27 +166,19 @@ final class SearchViewController: NSViewController {
         }
 
         engine?.onIndexProgress = { [weak self] scanned, total, done in
-            guard let self else { return }
+            guard let self, self.launchingResultID == nil else { return }
             guard !self.rootView.graphActive else {
                 self.rootView.indexProgress = nil
                 self.searchActivity.stop()
                 return
             }
-            if done {
-                if self.indexWasScanning, total > 0, scanned >= total {
-                    self.pendingResultFlash = true
-                }
-                self.indexWasScanning = false
-                self.rootView.indexProgress = nil
-                self.searchActivity.stop()
-            } else if total > 0 {
-                self.indexWasScanning = true
-                self.rootView.indexProgress = (scanned, total)
-                self.searchActivity.start()
-            } else {
-                self.rootView.indexProgress = nil
-                self.searchActivity.stop()
+            // A drag is a native tracking loop; keep the last progress state
+            // static and apply the newest callback when the drag is cancelled.
+            guard !self.isDraggingResult else {
+                self.deferredIndexProgress = (scanned, total, done)
+                return
             }
+            self.applyIndexProgress(scanned: scanned, total: total, done: done)
         }
 
         searchField.applyLauncherScale()
@@ -198,6 +194,7 @@ final class SearchViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
+        guard isolatedLaunchRow == nil else { return }
 
         let bounds = view.bounds
         let panel = Layout.panelRect(in: bounds)
@@ -307,7 +304,7 @@ final class SearchViewController: NSViewController {
         tableView.onClick = { [weak self] row in self?.selectResult(at: row) }
         tableView.dragItemProvider = { [weak self] row, point in
             guard let self, self.resultsAreCurrent, self.results.indices.contains(row) else { return nil }
-            return ResultDragging.item(for: self.results[row], at: point)
+            return ResultDragging.preparedItem(for: self.results[row], at: point)
         }
         tableView.onDragWillStart = { [weak self] row in self?.beginResultDrag(at: row) }
         tableView.onDragEnded = { [weak self] operation in self?.endResultDrag(operation: operation) }
@@ -351,6 +348,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Presentation
 
     func prepareForPresentation() {
+        restoreLaunchPresentation()
         deferredResults = nil
         queryWork?.cancel()
         queryWork = nil
@@ -636,6 +634,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Results
 
     func apply(results: [SearchResult], isSearching: Bool) {
+        guard launchingResultID == nil else { return }
         // Search/index callbacks may arrive inside AppKit's tracking run loop.
         // Keep the clicked identity, row geometry and window fixed until release.
         if tableView.isTrackingMouse || isDraggingResult {
@@ -720,7 +719,7 @@ final class SearchViewController: NSViewController {
             Log.debug("result count flash: \(results.count)")
         }
 
-        if pendingOpenAfterSearch, resultsAreCurrent, !isSearching {
+        if pendingOpenAfterSearch, resultsAreCurrent, !results.isEmpty || !isSearching {
             pendingOpenAfterSearch = false
             if results.isEmpty {
                 NSSound.beep()
@@ -730,8 +729,10 @@ final class SearchViewController: NSViewController {
                 tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
                 tableView.scrollRowToVisible(0)
                 Log.debug("queued enter opening first result: \(results[0].title)")
-                chooseSelected(reveal: pendingOpenReveal)
+                let reveal = pendingOpenReveal
                 pendingOpenReveal = false
+                chooseSelected(reveal: reveal)
+                return
             }
         }
 
@@ -761,8 +762,27 @@ final class SearchViewController: NSViewController {
         pendingOpenAfterSearch = false
     }
 
-    private var shouldDeferEnterUntilSearchCompletes: Bool {
-        queryWork != nil || !resultsAreCurrent || rootView.isSearching
+    /// Open the currently selected hit immediately, even while slower file
+    /// providers are still working. Only an empty/stale result set needs a wait.
+    func openSelectionWhenAvailable(reveal: Bool) {
+        guard launchingResultID == nil, !rootView.graphActive else { return }
+        if resultsAreCurrent, results.indices.contains(selectedIndex) {
+            pendingOpenAfterSearch = false
+            pendingOpenReveal = false
+            chooseSelected(reveal: reveal)
+            return
+        }
+        guard queryWork != nil || !resultsAreCurrent || rootView.isSearching else { return }
+        pendingOpenAfterSearch = true
+        pendingOpenReveal = reveal
+        Log.debug("enter queued for first matching result")
+        // Enter flushes the typing debounce. The engine emits its in-memory
+        // app/command results synchronously, without waiting for a file scan.
+        if let work = queryWork {
+            work.cancel()
+            queryWork = nil
+            engine?.search(searchField.stringValue)
+        }
     }
 
     private func chooseSelected(reveal: Bool) {
@@ -827,6 +847,10 @@ final class SearchViewController: NSViewController {
         guard quickLookMonitor == nil else { return }
         quickLookMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .scrollWheel]) { [weak self] event in
             guard let self else { return event }
+            if self.isolatedLaunchRow != nil, event.window === self.view.window {
+                if event.type == .keyDown, event.keyCode == 53 { self.onClose?() }
+                return nil
+            }
             if event.type != .keyDown {
                 if event.window === self.view.window, self.view.window?.isVisible == true {
                     if event.type == .leftMouseDown {
@@ -1004,6 +1028,8 @@ final class SearchViewController: NSViewController {
                 menu.addItem(reveal)
                 menu.addItem(.separator())
                 menu.addItem(contextItem("Copy Path", #selector(contextCopyPath)))
+                menu.addItem(.separator())
+                menu.addItem(contextItem("Add Alias…", #selector(contextAddAlias)))
             } else {
                 menu.addItem(contextItem("Open Website", #selector(contextOpen)))
                 menu.addItem(.separator())
@@ -1015,6 +1041,8 @@ final class SearchViewController: NSViewController {
             menu.addItem(reveal)
             menu.addItem(.separator())
             menu.addItem(contextItem("Copy Path", #selector(contextCopyPath)))
+            menu.addItem(.separator())
+            menu.addItem(contextItem("Add Alias…", #selector(contextAddAlias)))
         case .run:
             menu.addItem(contextItem("Run", #selector(contextRun)))
         }
@@ -1063,6 +1091,19 @@ final class SearchViewController: NSViewController {
         onChoose?(result, false)
     }
 
+    @objc private func contextAddAlias() {
+        guard let result = contextResult(), let url = fileURL(for: result),
+              FileManager.default.fileExists(atPath: url.path) else { return }
+        isPresentingAliasPrompt = true
+        let added = AliasPrompt.addAlias(for: url, title: result.title)
+        isPresentingAliasPrompt = false
+        view.window?.makeKeyAndOrderFront(nil)
+        focus()
+        if added != nil {
+            flashStatus("ALIAS ADDED")
+        }
+    }
+
     @objc private func contextCopyPath() {
         guard let result = contextResult(), let url = fileURL(for: result) else { return }
         copyToPasteboard(url.path)
@@ -1080,6 +1121,7 @@ final class SearchViewController: NSViewController {
     // MARK: - Clipboard mode
 
     func enterClipboardMode() {
+        restoreLaunchPresentation()
         ClipboardHistoryStore.shared.start()
         if clipboardMode {
             clipboardView.reload()
@@ -1162,8 +1204,11 @@ final class SearchViewController: NSViewController {
 
     // MARK: - Launch state
 
-    func markLaunching(_ result: SearchResult) {
-        guard results.contains(where: { $0.id == result.id }) else { return }
+    func markLaunching(_ result: SearchResult, isolate: Bool = false) {
+        guard let index = results.firstIndex(where: { $0.id == result.id }) else { return }
+        selectedIndex = index
+        pendingOpenAfterSearch = false
+        deferredResults = nil
         launchingResultID = result.id
         queryWork?.cancel()
         queryWork = nil
@@ -1172,8 +1217,27 @@ final class SearchViewController: NSViewController {
         rootView.indexProgress = nil
         searchActivity.stop()
         searchField.isEditable = false
-        tableView.reloadData()
-        showLaunchPulses()
+        if isolate {
+            cancelPixelAnimations()
+            stopGlow()
+            clearStatus()
+            searchPrompt.stop()
+            view.layoutSubtreeIfNeeded()
+            tableView.scrollRowToVisible(index)
+            let rect = rootView.convert(tableView.rect(ofRow: index), from: tableView)
+            launchHiddenViews = rootView.subviews.map { ($0, $0.isHidden) }
+            launchHiddenViews.forEach { $0.0.isHidden = true }
+            rootView.showsOnlyLaunchingResult = true
+            let row = ResultRowView(frame: rect)
+            row.configure(with: result, selected: true, launching: true)
+            rootView.addSubview(row)
+            isolatedLaunchRow = row
+            view.window?.makeFirstResponder(rootView)
+            rootView.displayIfNeeded()
+        } else {
+            tableView.reloadData()
+            showLaunchPulses()
+        }
         Log.debug("launch marked: \(result.title)")
     }
 
@@ -1193,7 +1257,28 @@ final class SearchViewController: NSViewController {
         pulseView.start()
     }
 
+    func restoreLaunchPresentation() {
+        let wasIsolated = isolatedLaunchRow != nil
+        isolatedLaunchRow?.removeFromSuperview()
+        isolatedLaunchRow = nil
+        launchHiddenViews.forEach { $0.0.isHidden = $0.1 }
+        launchHiddenViews.removeAll()
+        rootView.showsOnlyLaunchingResult = false
+        if wasIsolated {
+            launchingResultID = nil
+            searchField.isEditable = true
+            tableView.reloadData()
+        }
+    }
+
     func finishLaunching(success: Bool) {
+        // Keep the isolated row through panel dismissal. Restoring the whole
+        // list here would flash it over the newly opened application window.
+        if success, isolatedLaunchRow != nil {
+            Log.debug("launch window visible; dismissing isolated row")
+            return
+        }
+        if !success { restoreLaunchPresentation() }
         launchingResultID = nil
         launchPulseView?.stop()
         launchPulseView?.removeFromSuperview()
@@ -1201,6 +1286,7 @@ final class SearchViewController: NSViewController {
         searchField.isEditable = true
         tableView.reloadData()
         if !success {
+            startGlow()
             flashStatus("COULD NOT OPEN")
             focus()
         }
@@ -1399,13 +1485,7 @@ extension SearchViewController: NSTextFieldDelegate {
                 return true
             }
             let reveal = NSEvent.modifierFlags.contains(.command)
-            if shouldDeferEnterUntilSearchCompletes {
-                pendingOpenAfterSearch = true
-                pendingOpenReveal = reveal
-                Log.debug("enter queued until search completes")
-                return true
-            }
-            chooseSelected(reveal: reveal)
+            openSelectionWhenAvailable(reveal: reveal)
             return true
         case #selector(NSResponder.cancelOperation(_:)):
             onClose?()
@@ -1458,6 +1538,24 @@ extension SearchViewController: NSTableViewDataSource, NSTableViewDelegate {
         return rowView
     }
 
+    private func applyIndexProgress(scanned: Int, total: Int, done: Bool) {
+        if done {
+            if indexWasScanning, total > 0, scanned >= total {
+                pendingResultFlash = true
+            }
+            indexWasScanning = false
+            rootView.indexProgress = nil
+            searchActivity.stop()
+        } else if total > 0 {
+            indexWasScanning = true
+            rootView.indexProgress = (scanned, total)
+            searchActivity.start()
+        } else {
+            rootView.indexProgress = nil
+            searchActivity.stop()
+        }
+    }
+
     // MARK: - Drag out
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
@@ -1471,9 +1569,13 @@ extension SearchViewController: NSTableViewDataSource, NSTableViewDelegate {
         pendingOpenAfterSearch = false
         isDraggingResult = true
         draggedResult = results[row]
+        deferredIndexProgress = nil
+        queryWork?.cancel()
+        queryWork = nil
         clearStatus()
         cancelResultGlows()
         cancelPixelAnimations()
+        searchActivity.stop()
         interactionEffects.stop()
         glowView.stopPulse()
         Log.debug("drag began: \(results[row].title)")
@@ -1488,10 +1590,15 @@ extension SearchViewController: NSTableViewDataSource, NSTableViewDelegate {
             // Close without an animation or focus restoration: the receiving
             // application owns the completed drop and must retain focus.
             deferredResults = nil
+            deferredIndexProgress = nil
             onDragDismiss?()
             onDragOut?(result)
         } else {
             resumeDeferredResults()
+            if let progress = deferredIndexProgress {
+                deferredIndexProgress = nil
+                applyIndexProgress(scanned: progress.scanned, total: progress.total, done: progress.done)
+            }
             if let window = view.window, !window.isKeyWindow {
                 onDragDismiss?()
             } else if view.window?.isVisible == true {

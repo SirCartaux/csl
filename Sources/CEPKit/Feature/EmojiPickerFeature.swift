@@ -20,6 +20,7 @@ public final class EmojiPickerFeature {
     private var escapeMonitor: Any?
     private var workspaceObserver: NSObjectProtocol?
     private var isClosing = false
+    private var pendingHide: DispatchWorkItem?
     private var didStart = false
     private var didPrewarm = false
 
@@ -74,6 +75,8 @@ public final class EmojiPickerFeature {
     }
 
     public func stop() {
+        pendingHide?.cancel()
+        pendingHide = nil
         globeMonitor?.stop()
         globeMonitor = nil
         store.flush()
@@ -98,6 +101,8 @@ public final class EmojiPickerFeature {
     public func show() {
         guard let panel, let viewController else { return }
         if isClosing {
+            pendingHide?.cancel()
+            pendingHide = nil
             panel.contentView?.layer?.removeAllAnimations()
             panel.contentView?.layer?.opacity = 1
             isClosing = false
@@ -139,8 +144,10 @@ public final class EmojiPickerFeature {
         viewController.focus()
     }
 
-    public func hide() {
-        guard let panel, panel.isVisible, !isClosing else { return }
+    public func hide(animated: Bool = true) {
+        guard let panel, panel.isVisible, !isClosing || !animated else { return }
+        pendingHide?.cancel()
+        pendingHide = nil
         isClosing = true
         viewController?.prepareForHide()
         let finish = { [weak self] in
@@ -149,13 +156,16 @@ public final class EmojiPickerFeature {
             self.panel?.contentView?.layer?.removeAllAnimations()
             self.panel?.contentView?.layer?.opacity = 1
             self.targetPID = 0
+            self.pendingHide = nil
             self.isClosing = false
             Log.debug("emoji panel hidden")
         }
 
-        if InteractionMotion.enabled, let layer = panel.contentView?.layer {
+        if animated, InteractionMotion.enabled, let layer = panel.contentView?.layer {
             InteractionMotion.disappear(on: layer, duration: 0.07)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: finish)
+            let work = DispatchWorkItem(block: finish)
+            pendingHide = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
         } else {
             finish()
         }
@@ -196,6 +206,9 @@ public final class EmojiPickerFeature {
         )
         viewController.onClose = { [weak self] in
             self?.hide()
+        }
+        viewController.onReturnToTarget = { [weak self] keyCode, flags in
+            self?.returnToTarget(keyCode: keyCode, flags: flags)
         }
         viewController.onInsert = { [weak self] item, text in
             self?.insert(item: item, text: text) ?? false
@@ -242,6 +255,18 @@ public final class EmojiPickerFeature {
         guard let panel else { return }
         let frame = PickerPositioner.frame(anchor: anchor, windowSize: panel.frame.size)
         panel.setFrame(frame, display: false)
+    }
+
+    private func returnToTarget(keyCode: UInt16, flags: NSEvent.ModifierFlags) {
+        let pid = targetPID
+        // Close synchronously before forwarding; never insert the highlighted
+        // emoji implicitly or wait for the picker's closing animation.
+        hide(animated: false)
+        guard pid > 0, pid != ProcessInfo.processInfo.processIdentifier,
+              NSRunningApplication(processIdentifier: pid)?.isTerminated == false else { return }
+        if !TextInjector.sendReturn(keyCode: keyCode, flags: flags, into: pid) {
+            NSSound.beep()
+        }
     }
 
     private func insert(item: EmojiItem, text: String) -> Bool {
@@ -291,8 +316,17 @@ public final class EmojiPickerFeature {
         }
 
         escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isVisible, event.keyCode == 53 else { return }
-            self.hide()
+            guard let self, self.isVisible else { return }
+            switch event.keyCode {
+            case 36, 76:
+                // The original app already receives this global event. Close
+                // only; forwarding it here would submit the message twice.
+                self.hide(animated: false)
+            case 53:
+                self.hide()
+            default:
+                break
+            }
         }
     }
 

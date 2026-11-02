@@ -19,17 +19,19 @@ final class ResultDraggingTests: XCTestCase {
         return controller
     }
 
-    func testFilePasteboardRoundTripsModernAndLegacyReadersWithoutPromises() throws {
+    func testFilePasteboardUsesNativeURLWriterWithoutInvalidTypesOrPromises() throws {
         _ = NSApplication.shared
         let url = URL(fileURLWithPath: "/tmp/CSL Drag Tests/clip ü #1.mov")
         for action in [ResultAction.open(url), .reveal(url)] {
             let board = NSPasteboard.withUniqueName()
             defer { board.releaseGlobally() }
-            XCTAssertTrue(board.writeObjects([ResultDragging.writer(for: result("clip", action: action))]))
+            let writer = ResultDragging.writer(for: result("clip", action: action))
+            XCTAssertTrue(writer is NSURL)
+            XCTAssertTrue(board.writeObjects([writer]))
             let urls = try XCTUnwrap(board.readObjects(forClasses: [NSURL.self],
                 options: [.urlReadingFileURLsOnly: true]) as? [URL])
             XCTAssertEqual(urls, [url])
-            XCTAssertEqual(board.propertyList(forType: ResultDragging.filenamesType) as? [String], [url.path])
+            XCTAssertFalse(writer.writableTypes(for: board).contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")))
             XCTAssertFalse((board.types ?? []).contains { $0.rawValue.lowercased().contains("promise") })
         }
     }
@@ -40,7 +42,7 @@ final class ResultDraggingTests: XCTestCase {
         let url = URL(string: "https://example.com/media?q=clip")!
         XCTAssertTrue(board.writeObjects([ResultDragging.writer(for: result("website", action: .open(url)))]))
         XCTAssertEqual(board.string(forType: .URL), url.absoluteString)
-        XCTAssertNil(board.propertyList(forType: ResultDragging.filenamesType))
+        XCTAssertNil(board.string(forType: .fileURL))
         board.clearContents()
         var ran = false
         XCTAssertTrue(board.writeObjects([ResultDragging.writer(for: result("command", action: .run { ran = true }))]))
@@ -67,7 +69,37 @@ final class ResultDraggingTests: XCTestCase {
         XCTAssertEqual(first.draggingFrame.minY, last.draggingFrame.minY)
     }
 
-    func testCancelledDragFreezesResultsThenAppliesLatestBatchWithoutOpening() {
+    func testCompactPreviewIsRasterizedBeforeTheSession() {
+        _ = NSApplication.shared
+        let image = ResultDragging.previewImage(for: result("clip ü #1.mov"))
+        XCTAssertEqual(image.size, NSSize(width: 260, height: 36))
+        XCTAssertFalse(image.representations.isEmpty)
+        XCTAssertTrue(image.representations.allSatisfy { $0 is NSBitmapImageRep })
+        XCTAssertFalse(image.representations.contains { $0 is NSCustomImageRep })
+        XCTAssertEqual(image.representations.first?.pixelsWide, 520)
+        XCTAssertEqual(image.representations.first?.pixelsHigh, 72)
+    }
+
+    func testPreparedDragItemCarriesTheSameRasterizedImageAndFrame() {
+        _ = NSApplication.shared
+        let prepared = ResultDragging.preparedItem(for: result("clip ü #1.mov"), at: NSPoint(x: 20, y: 10))
+        XCTAssertEqual(prepared.item.draggingFrame, NSRect(x: 2, y: -8, width: 260, height: 36))
+        XCTAssertEqual(prepared.image.size, NSSize(width: 260, height: 36))
+        XCTAssertTrue(prepared.image.representations.allSatisfy { $0 is NSBitmapImageRep })
+    }
+
+    func testFileURLWithSpacesUmlautsAndReservedCharactersRoundTrips() throws {
+        _ = NSApplication.shared
+        let url = URL(fileURLWithPath: "/tmp/CSL Drag Tests/clip ü #1 % & ?.mov")
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        XCTAssertTrue(board.writeObjects([ResultDragging.writer(for: result("special", action: .open(url)))]))
+        let urls = try XCTUnwrap(board.readObjects(forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]) as? [URL])
+        XCTAssertEqual(urls, [url])
+    }
+
+    func testCancelledDragFreezesResultsThenAppliesLatestBatchWithoutOpeningAgain() {
         let controller = controller()
         defer { controller.stopGlow() }
         let table = NSTableView()
@@ -78,6 +110,9 @@ final class ResultDraggingTests: XCTestCase {
         controller.apply(results: [result("clip ü #1.mov")], isSearching: true)
         XCTAssertTrue(controller.control(controller.searchField, textView: NSTextView(),
             doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        // A current partial result now opens immediately, before any drag.
+        XCTAssertTrue(opened)
+        opened = false
         let height = controller.preferredContentHeight
         controller.beginResultDrag(at: 0)
         controller.apply(results: [result("replacement.mov"), result("second.mov")], isSearching: true)

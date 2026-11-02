@@ -5,6 +5,7 @@ final class SettingsSidebarView: NSView {
         ("ORDNER", .folder),
         ("IGNORIEREN", .ban),
         ("WEBSITES", .globe),
+        ("ALIASSE", .search),
         ("ANIMATION", .sparkle),
         ("ALLGEMEIN", .gear)
     ]
@@ -76,7 +77,7 @@ final class SettingsSidebarView: NSView {
 
         // footer
         PixelDraw.hLine(x: 18, y: bounds.maxY - 52, width: bounds.width - 36, color: Theme.line)
-        ("v0.6.2" as NSString).draw(
+        ("v0.7.1" as NSString).draw(
             in: CGRect(x: 20, y: bounds.maxY - 42, width: 80, height: 12),
             withAttributes: [
                 .font: Theme.display(8.5),

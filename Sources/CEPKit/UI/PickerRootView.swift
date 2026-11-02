@@ -309,7 +309,7 @@ final class PickerRootView: NSView {
 
         var cursor = rect.minX + 18
         cursor = drawHint(key: "UP/DOWN", label: "NAVIGATE", at: cursor, centerY: rect.midY)
-        cursor = drawHint(key: "ENTER", label: "INSERT", at: cursor, centerY: rect.midY)
+        cursor = drawHint(key: "ENTER", label: "SUBMIT", at: cursor, centerY: rect.midY)
         cursor = drawHint(key: "CMD+CLICK", label: "PIN", at: cursor, centerY: rect.midY)
         _ = drawHint(key: "ESC", label: "CLOSE", at: cursor, centerY: rect.midY)
 

@@ -11,8 +11,8 @@ import QuartzCore
 /// reports directly. That is event-driven (no polling) and also lets us see
 /// Fn+F1 … Fn+F12 before macOS turns them into brightness/media actions.
 ///
-/// A CGEventTap fallback is installed when no HID Fn element is found, which
-/// covers keyboards that expose Fn as a normal secondary-fn flag.
+/// A passive event tap also observes chords. HID reports for Fn and function
+/// keys may arrive on different devices or use different report layouts.
 final class GlobeKeyMonitor {
     var onFnDown: (() -> Void)?
     /// `usedAsModifier` is true when Fn was combined with another key
@@ -28,7 +28,6 @@ final class GlobeKeyMonitor {
     private var fallbackTap: CFMachPort?
     private var fallbackSource: CFRunLoopSource?
     private var fallbackInstalled = false
-    private var didInstallFallback = false
 
     private(set) var usesHID = false
     var sourceDescription: String {
@@ -94,7 +93,7 @@ final class GlobeKeyMonitor {
             guard length > start + 2 else { return }
             let modifiers = Int(report[start])
             // Ctrl / Alt / Cmd held with Fn means a system shortcut, not a tap.
-            if modifiers & 0x0D != 0 {
+            if modifiers != 0 {
                 monitor.noteModifierDuringFn()
             }
             let keyStart = start + 2
@@ -128,6 +127,7 @@ final class GlobeKeyMonitor {
         IOHIDManagerSetDeviceMatchingMultiple(manager, matching as CFArray)
         IOHIDManagerRegisterDeviceMatchingCallback(manager, Self.deviceMatched, Unmanaged.passUnretained(self).toOpaque())
         IOHIDManagerRegisterDeviceRemovalCallback(manager, Self.deviceRemoved, Unmanaged.passUnretained(self).toOpaque())
+        IOHIDManagerRegisterInputValueCallback(manager, Self.inputValueChanged, Unmanaged.passUnretained(self).toOpaque())
         IOHIDManagerScheduleWithRunLoop(
             manager,
             CFRunLoopGetMain(),
@@ -137,13 +137,9 @@ final class GlobeKeyMonitor {
         self.manager = manager
         Log.debug("GlobeKeyMonitor open=\(status)")
 
-        // The Fn device may not be present yet (Bluetooth reconnect). Give the
-        // manager a moment before falling back to a CGEventTap.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            guard let self, self.boxes.isEmpty, !self.didInstallFallback else { return }
-            self.didInstallFallback = true
-            self.installFallbackTap()
-        }
+        // Keep this listen-only observer even when hardware Fn is available.
+        // It never consumes or rewrites events destined for the foreground app.
+        installFallbackTap()
     }
 
     func stop() {
@@ -168,21 +164,23 @@ final class GlobeKeyMonitor {
         }
         manager = nil
         usesHID = false
+        fnIsDown = false
+        fnUsedAsModifier = false
     }
 
     // MARK: - Fn state
 
-    fileprivate func fnPressed() {
+    func fnPressed(at time: CFTimeInterval = CACurrentMediaTime()) {
         guard !fnIsDown else { return }
         fnIsDown = true
         fnUsedAsModifier = false
-        fnDownTime = CACurrentMediaTime()
+        fnDownTime = time
         onFnDown?()
     }
 
-    fileprivate func fnReleased() {
+    func fnReleased(at time: CFTimeInterval = CACurrentMediaTime()) {
         guard fnIsDown else { return }
-        let held = CACurrentMediaTime() - fnDownTime
+        let held = time - fnDownTime
         let used = fnUsedAsModifier
         fnIsDown = false
         fnUsedAsModifier = false
@@ -222,6 +220,22 @@ final class GlobeKeyMonitor {
         box.handleReport(reportID: reportID, report: report, length: length)
     }
 
+    private static let inputValueChanged: IOHIDValueCallback = { context, result, _, value in
+        guard let context, result == kIOReturnSuccess else { return }
+        let monitor = Unmanaged<GlobeKeyMonitor>.fromOpaque(context).takeUnretainedValue()
+        let element = IOHIDValueGetElement(value)
+        monitor.observeHIDValue(page: IOHIDElementGetUsagePage(element),
+                                usage: IOHIDElementGetUsage(element),
+                                value: IOHIDValueGetIntegerValue(value))
+    }
+
+    func observeHIDValue(page: UInt32, usage: UInt32, value: Int) {
+        // Keyboard (including modifiers) and consumer/media keys. Read parsed
+        // elements instead of assuming the Fn report contains a boot-key array.
+        guard value != 0, usage != 0, page == 0x07 || page == 0x0C else { return }
+        noteKeyDuringFn(usage: Int(usage))
+    }
+
     private func attach(device: IOHIDDevice) {
         guard !boxes.contains(where: { CFEqual($0.device, device) }) else { return }
         let productName = IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String ?? ""
@@ -251,7 +265,6 @@ final class GlobeKeyMonitor {
         box.lastFnValue = box.value() ?? 0
         boxes.append(box)
         usesHID = true
-        removeFallbackTap()
 
         IOHIDDeviceRegisterInputReportCallback(
             device,
@@ -307,19 +320,6 @@ final class GlobeKeyMonitor {
         Log.debug("fallback Fn event tap installed")
     }
 
-    private func removeFallbackTap() {
-        guard fallbackInstalled else { return }
-        if let fallbackTap {
-            CGEvent.tapEnable(tap: fallbackTap, enable: false)
-        }
-        if let fallbackSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), fallbackSource, .commonModes)
-        }
-        fallbackTap = nil
-        fallbackSource = nil
-        fallbackInstalled = false
-    }
-
     private static let fallbackCallback: CGEventTapCallBack = { _, type, event, userInfo in
         guard let userInfo else { return Unmanaged.passUnretained(event) }
         let monitor = Unmanaged<GlobeKeyMonitor>.fromOpaque(userInfo).takeUnretainedValue()
@@ -329,18 +329,28 @@ final class GlobeKeyMonitor {
             }
             return Unmanaged.passUnretained(event)
         }
-        let fnDown = event.flags.contains(.maskSecondaryFn)
-        if type == .flagsChanged || type == .keyDown || type == .keyUp {
-            if fnDown && !monitor.fnIsDown {
-                monitor.fnPressed()
-            } else if !fnDown && monitor.fnIsDown {
-                monitor.fnReleased()
+        monitor.observeEvent(type: type, keyCode: event.getIntegerValueField(.keyboardEventKeycode),
+                             flags: event.flags, hardwareFnAvailable: monitor.usesHID)
+        return Unmanaged.passUnretained(event)
+    }
+
+    func observeEvent(type: CGEventType, keyCode: Int64, flags: CGEventFlags,
+                      hardwareFnAvailable: Bool, at time: CFTimeInterval = CACurrentMediaTime()) {
+        // Only a real Fn modifier transition can start/end a tap. Function-key
+        // events can carry the Fn flag themselves; they are never Fn taps.
+        if !hardwareFnAvailable, type == .flagsChanged, keyCode == 63 {
+            if flags.contains(.maskSecondaryFn) {
+                fnPressed(at: time)
+            } else {
+                fnReleased(at: time)
             }
         }
-        if type == .keyDown, monitor.fnIsDown {
-            monitor.noteKeyDuringFn(usage: Int(event.getIntegerValueField(.keyboardEventKeycode)))
+        if type == .keyDown || type == .keyUp {
+            noteKeyDuringFn(usage: Int(keyCode))
         }
-        return Unmanaged.passUnretained(event)
+        if !flags.intersection([.maskShift, .maskControl, .maskAlternate, .maskCommand]).isEmpty {
+            noteModifierDuringFn()
+        }
     }
 
     // MARK: - Permissions

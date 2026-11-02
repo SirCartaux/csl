@@ -5,7 +5,7 @@ import Carbon.HIToolbox
 /// permission and delivers the event without polling.
 ///
 /// Primary: ⌘Space (must be freed from Spotlight once – see README).
-/// Fallback: ⌥Space, so the launcher is usable before that.
+/// Option-Space belongs to the foreground app; do not register a fallback.
 final class HotkeyManager {
     private(set) var activeBindings: [String] = []
     var onTrigger: (() -> Void)?
@@ -40,7 +40,6 @@ final class HotkeyManager {
         }
 
         register(keyCode: UInt32(kVK_Space), modifiers: UInt32(cmdKey), label: "CMD+SPACE", id: 1)
-        register(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey), label: "OPT+SPACE", id: 2)
 
         Log.debug("hotkeys active: \(activeBindings.joined(separator: ", "))")
     }

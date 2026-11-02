@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var viewController: SearchViewController!
     private var launchInProgress = false
     private var launchCompletionScheduled = false
+    private var activeLaunchID: UUID?
+    private let applicationWindowWaiter = ApplicationWindowWaiter()
     private var hideCompletion: (() -> Void)?
     private var pasteAccessibilityRequested = false
     private var lastExternalApp: NSRunningApplication?
@@ -326,6 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if isClosing {
             // Interrupt closing and resume interaction immediately.
             viewController.cancelPixelAnimations()
+            viewController.restoreLaunchPresentation()
             viewController.startGlow()
             isClosing = false
         }
@@ -362,6 +365,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard panel.isVisible, !isClosing else { return }
         launchInProgress = false
         launchCompletionScheduled = false
+        activeLaunchID = nil
+        applicationWindowWaiter.cancel()
         hideCompletion = completion
         isClosing = true
         viewController.cancelPendingOpen()
@@ -376,6 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func finishHide(restoreFocus: Bool) {
         guard isClosing else { return }
         panel.orderOut(nil)
+        viewController.restoreLaunchPresentation()
         viewController.cancelPixelAnimations()
         isClosing = false
         Log.debug("panel hidden (restoreFocus: \(restoreFocus))")
@@ -446,22 +452,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard !launchInProgress else { return }
         launchInProgress = true
         launchCompletionScheduled = false
-        viewController.markLaunching(result)
+        let launchID = UUID()
+        activeLaunchID = launchID
+        let isolatingOpenedResult: Bool
+        if case .open = result.action {
+            isolatingOpenedResult = !reveal
+        } else {
+            isolatingOpenedResult = false
+        }
+        viewController.markLaunching(result, isolate: isolatingOpenedResult)
 
         let started = CACurrentMediaTime()
         let query = engine.lastQuery
 
-        // Keep the row animation visible for at least a beat, then reveal the
-        // actual launch result. The launcher stays on screen until then.
+        // Opened items finish when their app has a window, with no artificial
+        // minimum delay. Other actions retain their brief launch feedback.
         func finish(_ success: Bool, record: Bool) {
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.launchInProgress, !self.launchCompletionScheduled else { return }
+                guard let self, self.activeLaunchID == launchID, self.launchInProgress, !self.launchCompletionScheduled else { return }
                 self.launchCompletionScheduled = true
-                let remaining = max(0, 1.0 - (CACurrentMediaTime() - started))
+                let remaining = isolatingOpenedResult ? 0 : max(0, 1.0 - (CACurrentMediaTime() - started))
                 DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
-                    guard let self, self.launchInProgress else { return }
+                    guard let self, self.activeLaunchID == launchID, self.launchInProgress else { return }
                     self.launchInProgress = false
                     self.launchCompletionScheduled = false
+                    self.activeLaunchID = nil
+                    self.applicationWindowWaiter.cancel()
                     self.viewController.finishLaunching(success: success)
                     if success {
                         if record {
@@ -487,8 +503,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 NSWorkspace.shared.openApplication(
                     at: url,
                     configuration: configuration
-                ) { _, error in
-                    finish(error == nil, record: true)
+                ) { [weak self] application, error in
+                    DispatchQueue.main.async {
+                        guard let self, self.activeLaunchID == launchID, self.launchInProgress else { return }
+                        guard error == nil, let application else {
+                            finish(false, record: false)
+                            return
+                        }
+                        self.applicationWindowWaiter.wait(for: application) { success in
+                            finish(success, record: true)
+                        }
+                    }
                 }
             } else {
                 let configuration = NSWorkspace.OpenConfiguration()
@@ -496,8 +521,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 NSWorkspace.shared.open(
                     url,
                     configuration: configuration
-                ) { _, error in
-                    finish(error == nil, record: true)
+                ) { [weak self] application, error in
+                    DispatchQueue.main.async {
+                        guard let self, self.activeLaunchID == launchID, self.launchInProgress else { return }
+                        guard error == nil else { finish(false, record: false); return }
+                        if let application {
+                            self.applicationWindowWaiter.wait(for: application) { success in
+                                finish(success, record: true)
+                            }
+                        } else {
+                            // Some URL handlers acknowledge opening without
+                            // returning a process that exposes a window.
+                            finish(true, record: true)
+                        }
+                    }
                 }
             }
 
@@ -564,8 +601,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func windowDidResignKey(_ notification: Notification) {
         guard notification.object as? NSWindow === panel, panel.isVisible, !isClosing else { return }
         // Launching an app naturally moves key focus to it; keep CSL visible
-        // until the async launch completes and its row animation has played.
+        // until a visible application window has actually been detected.
         if launchInProgress { return }
+        if viewController.isPresentingAliasPrompt { return }
         // A drag out of the panel temporarily takes key away; hide only after
         // the drag session has ended.
         if viewController.isDraggingResult || viewController.isPreviewing { return }
@@ -738,6 +776,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // cancel that completion instead of letting it close the panel.
         launchInProgress = false
         launchCompletionScheduled = false
+        activeLaunchID = nil
+        applicationWindowWaiter.cancel()
         SettingsWindowController.shared.close(restoreFocus: false)
         if !panel.isVisible {
             showPanel()

@@ -33,8 +33,26 @@ final class SearchEngine {
     private var indexSearching = false
     private var started: CFTimeInterval = 0
     private var loggedFirstUpdate = false
+    private var aliasObserver: NSObjectProtocol?
 
     var lastQuery: String { currentQuery }
+
+    init() {
+        aliasObserver = NotificationCenter.default.addObserver(
+            forName: .cslAliasesChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.searchActive else { return }
+            self.emit()
+        }
+    }
+
+    deinit {
+        if let aliasObserver {
+            NotificationCenter.default.removeObserver(aliasObserver)
+        }
+    }
 
     func warmUp() {
         appProvider.warmUp { [weak self] in
@@ -89,7 +107,11 @@ final class SearchEngine {
         instantResults.append(contentsOf: cached)
         instantResults.sort(by: Self.ranking)
         emit()
+        // A queued Enter can open the first synchronous result and cancel us
+        // from inside the delegate callback. Do not start new work afterwards.
+        guard self.generation == generation, searchActive else { return }
         searchIndex(for: trimmed, generation: generation)
+        guard self.generation == generation, searchActive else { return }
 
         // The prefix query is cheap enough to start immediately; the provider
         // debounces only its slower substring pass internally.
@@ -132,7 +154,9 @@ final class SearchEngine {
             instantResults.append(contentsOf: cached)
             instantResults.sort(by: Self.ranking)
         }
+        let emittedGeneration = generation
         emit()
+        guard generation == emittedGeneration, searchActive else { return }
         if !currentQuery.isEmpty, WebSearchProvider.query(from: currentQuery) == nil {
             searchIndex(for: currentQuery, generation: generation)
         }
@@ -225,7 +249,9 @@ final class SearchEngine {
 
     private func emit() {
         var seen = Set<String>()
-        var merged = instantResults.filter { seen.insert($0.id).inserted }
+        var merged = AliasStore.shared.results(for: currentQuery)
+            .filter { seen.insert($0.id).inserted }
+        merged.append(contentsOf: instantResults.filter { seen.insert($0.id).inserted })
         merged.append(contentsOf: streamedFileResults.filter { seen.insert($0.id).inserted })
         merged.append(contentsOf: fileResults.filter { seen.insert($0.id).inserted })
         merged = ResultRanker.shared.ranked(merged, query: currentQuery)

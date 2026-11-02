@@ -29,6 +29,27 @@ enum TextInjector {
         return true
     }
 
+    /// Real Return key events preserve the target app's normal send/newline
+    /// behavior, including Shift-Return, instead of inserting a Unicode newline.
+    static func returnEvents(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> [CGEvent] {
+        guard keyCode == 36 || keyCode == 76,
+              let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else { return [] }
+        let modifiers = CGEventFlags(rawValue: UInt64(flags.intersection(.deviceIndependentFlagsMask).rawValue))
+        down.flags = modifiers
+        up.flags = modifiers
+        return [down, up]
+    }
+
+    static func sendReturn(keyCode: UInt16, flags: NSEvent.ModifierFlags, into pid: pid_t) -> Bool {
+        guard pid > 0, AXIsProcessTrusted() else { return false }
+        let events = returnEvents(keyCode: keyCode, flags: flags)
+        guard events.count == 2 else { return false }
+        events.forEach { $0.postToPid(pid) }
+        return true
+    }
+
     static func copyToPasteboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

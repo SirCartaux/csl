@@ -99,6 +99,7 @@ enum Layout {
 /// search prompt, empty state and footer hints. The animated halo lives in
 /// GlowView on top of this view.
 final class RootView: NSView {
+    var showsOnlyLaunchingResult = false { didSet { needsDisplay = true } }
     var query: String = ""
     var resultCount: Int = 0
     var isSearching: Bool = false
@@ -134,6 +135,7 @@ final class RootView: NSView {
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+        guard !showsOnlyLaunchingResult else { return }
         let panel = Layout.panelRect(in: bounds)
 
         // 1. hard pixel drop shadow
