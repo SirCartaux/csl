@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Launcher
+- Clicking outside the launcher now closes it and replays that first click to the app or control underneath. Clicks covered by the launcher window itself are not replayed.
+
 ## 0.7.1 — 2026-10-26
 
 ### Aliases

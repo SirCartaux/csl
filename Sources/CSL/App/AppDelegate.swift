@@ -41,6 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var didLogSelftestFirstUpdate = false
     private var isClosing = false
     private var settingsShortcutMonitor: Any?
+    private var outsideClickTap: CFMachPort?
+    private var outsideClickRunLoopSource: CFRunLoopSource?
+    private var outsideClickReplayScheduled = false
+    private var suppressOriginalMouseUp = false
 
     // MARK: - Lifecycle
 
@@ -165,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let settingsShortcutMonitor {
             NSEvent.removeMonitor(settingsShortcutMonitor)
         }
+        removeOutsideClickTap()
         ClipboardHistoryStore.shared.stop()
         ClipboardHistoryStore.shared.flush()
         if let workspaceObserver {
@@ -358,6 +363,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         viewController.focus()
         viewController.startPixelOpen()
         viewController.startGlow()
+        outsideClickReplayScheduled = false
+        suppressOriginalMouseUp = false
+        installOutsideClickTap()
         Log.debug(String(format: "panel shown in %.1f ms", (CACurrentMediaTime() - started) * 1000))
     }
 
@@ -393,6 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 NSApp.hide(nil)
             }
         }
+        removeOutsideClickTap()
         let completion = hideCompletion
         hideCompletion = nil
         completion?()
@@ -607,7 +616,149 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // A drag out of the panel temporarily takes key away; hide only after
         // the drag session has ended.
         if viewController.isDraggingResult || viewController.isPreviewing { return }
+
+        // Clicks outside the panel are intercepted by the event tap while it
+        // is installed, so the panel normally does not resign for them. Any
+        // other key loss (Cmd+Tab, a menu, another CSL window) keeps the old
+        // close behaviour.
         hidePanel(restoreFocus: false)
+    }
+
+    // MARK: - Outside click-through
+
+    private static let outsideClickTapCallback: CGEventTapCallBack = { _, type, event, context in
+        guard let context else { return Unmanaged.passUnretained(event) }
+        let delegate = Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue()
+        return delegate.handleOutsideClickTap(type: type, event: event)
+    }
+
+    private func handleOutsideClickTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let outsideClickTap {
+                CGEvent.tapEnable(tap: outsideClickTap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard panel.isVisible,
+              !isClosing,
+              !viewController.isPresentingAliasPrompt,
+              !viewController.isDraggingResult,
+              !viewController.isPreviewing else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        let point = NSEvent.mouseLocation
+        guard !isPointCoveredByCSLWindow(point) else {
+            return Unmanaged.passUnretained(event)
+        }
+
+        switch type {
+        case .leftMouseDown:
+            // Swallow the original down/up so the target receives exactly one
+            // click: the synthetic replay after the panel is gone.
+            suppressOriginalMouseUp = true
+            guard !outsideClickReplayScheduled else { return nil }
+            let location = event.location
+            DispatchQueue.main.async { [weak self] in
+                self?.handleOutsideClick(at: location, replay: true)
+            }
+            return nil
+        case .leftMouseUp:
+            if suppressOriginalMouseUp {
+                suppressOriginalMouseUp = false
+                return nil
+            }
+            return Unmanaged.passUnretained(event)
+        default:
+            return Unmanaged.passUnretained(event)
+        }
+    }
+
+    private func installOutsideClickTap() {
+        removeOutsideClickTap()
+        guard AXIsProcessTrusted() else {
+            Log.debug("outside click-through: accessibility permission missing")
+            return
+        }
+        let mask = (1 << CGEventType.leftMouseDown.rawValue)
+            | (1 << CGEventType.leftMouseUp.rawValue)
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(mask),
+            callback: Self.outsideClickTapCallback,
+            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        ) else {
+            Log.debug("outside click-through: could not create event tap")
+            return
+        }
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        outsideClickTap = tap
+        outsideClickRunLoopSource = source
+    }
+
+    private func removeOutsideClickTap() {
+        if let outsideClickRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), outsideClickRunLoopSource, .commonModes)
+        }
+        if let outsideClickTap {
+            CGEvent.tapEnable(tap: outsideClickTap, enable: false)
+            CFMachPortInvalidate(outsideClickTap)
+        }
+        outsideClickRunLoopSource = nil
+        outsideClickTap = nil
+        suppressOriginalMouseUp = false
+    }
+
+    private func isPointCoveredByCSLWindow(_ point: NSPoint) -> Bool {
+        if panel.frame.contains(point) { return true }
+        for window in NSApp.windows where window.isVisible && window !== panel {
+            if window.frame.contains(point) { return true }
+        }
+        return false
+    }
+
+    private func handleOutsideClick(at location: CGPoint, replay: Bool) {
+        guard !isClosing, !outsideClickReplayScheduled else { return }
+        outsideClickReplayScheduled = true
+        hidePanel(restoreFocus: false) { [weak self] in
+            guard let self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                if NSApp.isActive {
+                    NSApp.hide(nil)
+                }
+                if replay, AXIsProcessTrusted() {
+                    self.postOutsideClick(at: location)
+                }
+                self.outsideClickReplayScheduled = false
+            }
+        }
+    }
+
+    private func postOutsideClick(at location: CGPoint) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        let down = CGEvent(
+            mouseEventSource: source,
+            mouseType: .leftMouseDown,
+            mouseCursorPosition: location,
+            mouseButton: .left
+        )
+        down?.setIntegerValueField(.mouseEventClickState, value: 1)
+        down?.post(tap: .cghidEventTap)
+        usleep(25_000)
+        let up = CGEvent(
+            mouseEventSource: source,
+            mouseType: .leftMouseUp,
+            mouseCursorPosition: location,
+            mouseButton: .left
+        )
+        up?.setIntegerValueField(.mouseEventClickState, value: 1)
+        up?.post(tap: .cghidEventTap)
+        Log.debug("outside click replayed at \(location.x), \(location.y)")
     }
 
     // MARK: - Menu
