@@ -684,6 +684,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         } else {
             removeOutsideClickTap()
         }
+        emojiPicker?.outsideClickThroughEnabled = outsideClickTap != nil
     }
 
     private func installOutsideClickTap() {
@@ -724,6 +725,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         outsideClickRunLoopSource = nil
         outsideClickTap = nil
         suppressOriginalMouseUp = false
+        emojiPicker?.outsideClickThroughEnabled = false
     }
 
     private func isPointCoveredByCSLWindow(_ point: NSPoint) -> Bool {

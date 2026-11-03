@@ -10,6 +10,9 @@ public final class EmojiPickerFeature {
     public let brand: String
     /// Called on the main thread when the picker panel appears or finishes hiding.
     public var onVisibilityChanged: ((Bool) -> Void)?
+    /// When CSL's outside-click tap is available it handles the close/replay.
+    /// Otherwise this feature keeps a simple close-on-outside-click fallback.
+    public var outsideClickThroughEnabled = false
 
     private let store = EmojiStore.shared
     private var panel: CharacterPanel?
@@ -310,17 +313,18 @@ public final class EmojiPickerFeature {
     }
 
     private func installGlobalMonitors() {
-        // Left clicks are handled by CSL's outside-click tap so they can be
-        // replayed to the app underneath. Secondary clicks still close only.
+        // With the CSL event tap active, left clicks are swallowed there and
+        // replayed afterwards. This monitor remains as a fallback for systems
+        // where the tap is unavailable, and always handles secondary clicks.
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.rightMouseDown, .otherMouseDown]
-        ) { [weak self] _ in
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
             guard let self, self.isVisible else { return }
             let point = NSEvent.mouseLocation
-            if !(self.panel?.frame.contains(point) ?? false) {
-                Log.debug("emoji panel outside secondary click")
-                self.hide()
-            }
+            guard !(self.panel?.frame.contains(point) ?? false) else { return }
+            if event.type == .leftMouseDown, self.outsideClickThroughEnabled { return }
+            Log.debug("emoji panel outside click")
+            self.hide()
         }
 
         escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in

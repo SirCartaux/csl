@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Launcher
-- Clicking outside the launcher or the character-picker panel now closes it and replays that first click to the app or control underneath. Clicks covered by a CSL window itself are not replayed.
+- Clicking outside the launcher or the character-picker panel now closes it and replays that first click to the app or control underneath. Clicks covered by a CSL window itself are not replayed. The character picker also keeps a close-only fallback when the event tap is unavailable, and Cmd+A selects its search text for immediate replacement.
 
 ## 0.7.1 — 2026-10-26
 

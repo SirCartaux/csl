@@ -520,6 +520,19 @@ final class PickerViewController: NSViewController, NSTextFieldDelegate {
                 self.grid.selectLast()
                 return nil
 
+            case 0: // A
+                if hasCommand {
+                    self.focus()
+                    if let editor = self.searchField.currentEditor() as? NSTextView {
+                        editor.selectAll(nil)
+                    } else {
+                        self.searchField.selectText(nil)
+                        (self.searchField.currentEditor() as? NSTextView)?.selectAll(nil)
+                    }
+                    return nil
+                }
+                return event
+
             case 2: // D
                 if hasCommand, let item = self.grid.selectedItem {
                     self.toggleFavorite(item)
