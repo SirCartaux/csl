@@ -330,6 +330,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if SettingsWindowController.shared.isVisible {
             SettingsWindowController.shared.close(restoreFocus: false)
         }
+        if emojiPicker?.isVisible == true {
+            emojiPicker?.hide(animated: false)
+        }
         if isClosing {
             // Interrupt closing and resume interaction immediately.
             viewController.cancelPixelAnimations()
@@ -365,7 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         viewController.startGlow()
         outsideClickReplayScheduled = false
         suppressOriginalMouseUp = false
-        installOutsideClickTap()
+        refreshOutsideClickTap()
         Log.debug(String(format: "panel shown in %.1f ms", (CACurrentMediaTime() - started) * 1000))
     }
 
@@ -401,7 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 NSApp.hide(nil)
             }
         }
-        removeOutsideClickTap()
+        refreshOutsideClickTap()
         let completion = hideCompletion
         hideCompletion = nil
         completion?()
@@ -640,8 +643,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return Unmanaged.passUnretained(event)
         }
 
-        guard panel.isVisible,
-              !isClosing,
+        guard panel.isVisible || (emojiPicker?.isVisible ?? false),
               !viewController.isPresentingAliasPrompt,
               !viewController.isDraggingResult,
               !viewController.isPreviewing else {
@@ -675,6 +677,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    private func refreshOutsideClickTap() {
+        let shouldInstall = panel.isVisible || (emojiPicker?.isVisible ?? false)
+        if shouldInstall {
+            if outsideClickTap == nil { installOutsideClickTap() }
+        } else {
+            removeOutsideClickTap()
+        }
+    }
+
     private func installOutsideClickTap() {
         removeOutsideClickTap()
         guard AXIsProcessTrusted() else {
@@ -699,6 +710,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         CGEvent.tapEnable(tap: tap, enable: true)
         outsideClickTap = tap
         outsideClickRunLoopSource = source
+        Log.debug("outside click-through: event tap installed")
     }
 
     private func removeOutsideClickTap() {
@@ -723,9 +735,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func handleOutsideClick(at location: CGPoint, replay: Bool) {
-        guard !isClosing, !outsideClickReplayScheduled else { return }
+        guard !outsideClickReplayScheduled else { return }
+        let panelVisible = panel.isVisible && !isClosing
+        let pickerVisible = emojiPicker?.isVisible ?? false
+        guard panelVisible || pickerVisible else { return }
+
         outsideClickReplayScheduled = true
-        hidePanel(restoreFocus: false) { [weak self] in
+        if pickerVisible {
+            emojiPicker?.hide(animated: false)
+        }
+
+        let replayClick = { [weak self] in
             guard let self else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 if NSApp.isActive {
@@ -736,6 +756,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
                 self.outsideClickReplayScheduled = false
             }
+        }
+
+        if panelVisible {
+            hidePanel(restoreFocus: false, completion: replayClick)
+        } else {
+            replayClick()
         }
     }
 
@@ -855,8 +881,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func startEmojiPicker() {
         guard emojiPicker == nil else { return }
         let picker = EmojiPickerFeature(brand: "CSL")
-        picker.start(showSetupIfNeeded: !CommandLine.arguments.contains("--emoji-no-setup"))
+        picker.onVisibilityChanged = { [weak self] visible in
+            guard let self else { return }
+            if visible, self.panel.isVisible {
+                self.hidePanel(restoreFocus: false)
+            }
+            self.refreshOutsideClickTap()
+        }
         emojiPicker = picker
+        picker.start(showSetupIfNeeded: !CommandLine.arguments.contains("--emoji-no-setup"))
         handleEmojiTestArguments(picker)
     }
 

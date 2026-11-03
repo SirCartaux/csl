@@ -8,6 +8,8 @@ import ServiceManagement
 /// the permission setup window.
 public final class EmojiPickerFeature {
     public let brand: String
+    /// Called on the main thread when the picker panel appears or finishes hiding.
+    public var onVisibilityChanged: ((Bool) -> Void)?
 
     private let store = EmojiStore.shared
     private var panel: CharacterPanel?
@@ -89,6 +91,7 @@ public final class EmojiPickerFeature {
         }
         workspaceObserver = nil
         SetupWindowController.shared.close()
+        if panel?.isVisible == true { onVisibilityChanged?(false) }
         panel?.orderOut(nil)
         panel = nil
         viewController = nil
@@ -132,6 +135,7 @@ public final class EmojiPickerFeature {
             targetPID,
             NSStringFromRect(panel.frame)
         ))
+        onVisibilityChanged?(true)
     }
 
     /// Test / integration entry point. All arguments are optional.
@@ -159,6 +163,7 @@ public final class EmojiPickerFeature {
             self.pendingHide = nil
             self.isClosing = false
             Log.debug("emoji panel hidden")
+            self.onVisibilityChanged?(false)
         }
 
         if animated, InteractionMotion.enabled, let layer = panel.contentView?.layer {
@@ -305,12 +310,15 @@ public final class EmojiPickerFeature {
     }
 
     private func installGlobalMonitors() {
+        // Left clicks are handled by CSL's outside-click tap so they can be
+        // replayed to the app underneath. Secondary clicks still close only.
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            matching: [.rightMouseDown, .otherMouseDown]
         ) { [weak self] _ in
             guard let self, self.isVisible else { return }
             let point = NSEvent.mouseLocation
             if !(self.panel?.frame.contains(point) ?? false) {
+                Log.debug("emoji panel outside secondary click")
                 self.hide()
             }
         }
