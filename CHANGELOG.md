@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.2 — 2026-11-04
 
 ### Web search shortcuts
 - Type a configurable prefix, a space and a query (for example `GB Bilder von Hunden` or `T Despacito`) to open that search directly on the matching website.
@@ -10,6 +10,9 @@
 
 ### Launcher
 - Clicking outside the launcher or the character-picker panel now closes it and replays that first click to the app or control underneath. Clicks covered by a CSL window itself are not replayed. The character picker also keeps a close-only fallback when the event tap is unavailable, and Cmd+A selects its search text for immediate replacement.
+
+### Text editing
+- Add a standard Edit menu and a responder-chain Cmd+V fallback. Paste now works in every text field: launcher, settings, aliases, shortcut URL fields, character picker and modal prompts.
 
 ## 0.7.1 — 2026-10-26
 

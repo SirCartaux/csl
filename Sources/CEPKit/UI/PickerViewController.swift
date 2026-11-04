@@ -520,6 +520,13 @@ final class PickerViewController: NSViewController, NSTextFieldDelegate {
                 self.grid.selectLast()
                 return nil
 
+            case 9: // V
+                if hasCommand, let editor = self.searchField.currentEditor() as? NSTextView {
+                    editor.paste(nil)
+                    return nil
+                }
+                return event
+
             case 0: // A
                 if hasCommand {
                     self.focus()

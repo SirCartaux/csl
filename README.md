@@ -124,8 +124,8 @@ annotations; `Tools/generate_emoji.py` reproduces it.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.7.1.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.7.1.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.7.2.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.7.2.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 

@@ -45,11 +45,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var outsideClickRunLoopSource: CFRunLoopSource?
     private var outsideClickReplayScheduled = false
     private var suppressOriginalMouseUp = false
+    private var pasteKeyMonitor: Any?
 
     // MARK: - Lifecycle
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         PixelFont.registerBundledFonts()
+        buildMainMenu()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -62,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         installHotkey()
         installSettingsShortcut()
         ClipboardHistoryStore.shared.start()
+        installPasteKeyMonitor()
 
         engine.delegate = self
         engine.warmUp()
@@ -174,6 +177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let settingsShortcutMonitor {
             NSEvent.removeMonitor(settingsShortcutMonitor)
         }
+        if let pasteKeyMonitor {
+            NSEvent.removeMonitor(pasteKeyMonitor)
+        }
         removeOutsideClickTap()
         ClipboardHistoryStore.shared.stop()
         ClipboardHistoryStore.shared.flush()
@@ -183,6 +189,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         FileWatcher.shared.stopAll()
         FileIndex.shared.flush()
         ResultRanker.shared.flush()
+    }
+
+    // MARK: - Text editing
+
+    private func buildMainMenu() {
+        let main = NSMenu(title: "CSL")
+        let appItem = NSMenuItem()
+        appItem.submenu = NSMenu(title: "CSL")
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        let edit = NSMenu(title: "Edit")
+
+        let undo = NSMenuItem(title: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+        undo.target = nil
+        edit.addItem(undo)
+
+        let redo = NSMenuItem(title: "Redo", action: NSSelectorFromString("redo:"), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        redo.target = nil
+        edit.addItem(redo)
+        edit.addItem(.separator())
+
+        for (title, action, key) in [
+            ("Cut", NSSelectorFromString("cut:"), "x"),
+            ("Copy", NSSelectorFromString("copy:"), "c"),
+            ("Paste", NSSelectorFromString("paste:"), "v"),
+            ("Select All", NSSelectorFromString("selectAll:"), "a")
+        ] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = nil
+            edit.addItem(item)
+        }
+
+        editItem.submenu = edit
+        main.addItem(editItem)
+        NSApp.mainMenu = main
+    }
+
+    /// A menu key equivalent normally handles this, but CSL's non-activating
+    /// panels do not always get first crack at the app menu. This keeps Cmd+V
+    /// working in every field editor in the launcher, settings, picker and
+    /// modal prompts.
+    private func installPasteKeyMonitor() {
+        guard pasteKeyMonitor == nil else { return }
+        pasteKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "v" else {
+                return event
+            }
+            let keyWindow = NSApp.windows.first(where: { $0.isKeyWindow }) ?? NSApp.keyWindow
+            guard let responder = keyWindow?.firstResponder,
+                  responder is NSTextView || responder is NSTextField else {
+                return event
+            }
+            if NSApp.sendAction(NSSelectorFromString("paste:"), to: responder, from: nil) {
+                return nil
+            }
+            return event
+        }
     }
 
     // MARK: - UI setup
