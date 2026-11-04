@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func applicationDidFinishLaunching(_ notification: Notification) {
         parseArguments()
         _ = SettingsStore.shared
+        _ = ShortcutStore.shared
         applyInitialLauncherScale()
         buildPanel()
         buildStatusItem()
@@ -151,6 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 IndexCoordinator.shared.indexMissing()
             }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            ShortcutIconService.shared.prefetchMissing()
         }
 
         if shouldStartEmojiPicker() {

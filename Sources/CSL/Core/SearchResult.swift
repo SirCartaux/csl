@@ -19,6 +19,12 @@ enum ResultAction {
     case run(() -> Void)
 }
 
+struct ShortcutPresentation {
+    let prefix: String
+    let name: String
+    let tint: NSColor
+}
+
 struct SearchResult {
     let id: String
     let title: String
@@ -28,6 +34,29 @@ struct SearchResult {
     let score: Int
     let titleMatch: [NSRange]
     let action: ResultAction
+    let shortcut: ShortcutPresentation?
+
+    init(
+        id: String,
+        title: String,
+        subtitle: String,
+        kind: ResultKind,
+        icon: ResultIcon,
+        score: Int,
+        titleMatch: [NSRange],
+        action: ResultAction,
+        shortcut: ShortcutPresentation? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.kind = kind
+        self.icon = icon
+        self.score = score
+        self.titleMatch = titleMatch
+        self.action = action
+        self.shortcut = shortcut
+    }
 
     func withScore(_ newScore: Int) -> SearchResult {
         SearchResult(
@@ -38,7 +67,8 @@ struct SearchResult {
             icon: icon,
             score: newScore,
             titleMatch: titleMatch,
-            action: action
+            action: action,
+            shortcut: shortcut
         )
     }
 }

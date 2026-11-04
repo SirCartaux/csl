@@ -6,6 +6,7 @@ final class SettingsSidebarView: NSView {
         ("IGNORIEREN", .ban),
         ("WEBSITES", .globe),
         ("ALIASSE", .search),
+        ("KÜRZEL", .key),
         ("ANIMATION", .sparkle),
         ("ALLGEMEIN", .gear)
     ]

@@ -143,6 +143,15 @@ final class ResultRowView: NSView {
         }
 
         drawIcon(result)
+        if let shortcut = result.shortcut {
+            let iconBox = CGRect(x: Theme.ls(18), y: Theme.ls(10), width: Theme.ls(22), height: Theme.ls(22))
+            PixelDraw.frame(
+                iconBox.insetBy(dx: -Theme.ls(3), dy: -Theme.ls(3)),
+                thickness: max(1, Theme.ls(1)),
+                color: shortcut.tint.withAlphaComponent(isSelected ? 0.9 : 0.55),
+                notch: Theme.ls(2)
+            )
+        }
 
         var titleRect = Layout.rowLabelRect(in: bounds)
         var subtitleRect = Layout.rowSubtitleRect(in: bounds)
@@ -161,6 +170,12 @@ final class ResultRowView: NSView {
             let contentRight = label.minX - Theme.ls(8)
             titleRect.size.width = max(10, contentRight - titleRect.minX)
             subtitleRect.size.width = max(10, contentRight - subtitleRect.minX)
+        }
+
+        if let shortcut = result.shortcut {
+            let badgeWidth = drawShortcutBadge(shortcut, x: titleRect.minX, y: titleRect.minY)
+            titleRect.origin.x += badgeWidth + Theme.ls(8)
+            titleRect.size.width = max(10, titleRect.width - badgeWidth - Theme.ls(8))
         }
 
         let paragraph = NSMutableParagraphStyle()
@@ -207,6 +222,42 @@ final class ResultRowView: NSView {
         } else if isSelected {
             PixelDraw.chevron(x: bounds.width - Theme.ls(21), y: Theme.ls(16), unit: Theme.ls(2), color: Theme.accent)
         }
+    }
+
+    @discardableResult
+    private func drawShortcutBadge(_ shortcut: ShortcutPresentation, x: CGFloat, y: CGFloat) -> CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Theme.launcherDisplayBold(8),
+            .foregroundColor: shortcut.tint
+        ]
+        let text = shortcut.prefix.uppercased() as NSString
+        let textSize = text.size(withAttributes: attributes)
+        let width = max(Theme.ls(24), ceil(textSize.width) + Theme.ls(13))
+        let rect = CGRect(x: x, y: y + Theme.ls(1), width: width, height: Theme.ls(18))
+
+        PixelDraw.fill(rect, shortcut.tint.withAlphaComponent(0.13))
+        PixelDraw.frame(
+            rect.insetBy(dx: 0.5, dy: 0.5),
+            thickness: max(1, Theme.ls(1)),
+            color: shortcut.tint,
+            notch: Theme.ls(2)
+        )
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        text.draw(
+            in: CGRect(
+                x: rect.minX + Theme.ls(3),
+                y: floor(rect.midY - textSize.height / 2),
+                width: rect.width - Theme.ls(6),
+                height: textSize.height
+            ),
+            withAttributes: [
+                .font: Theme.launcherDisplayBold(8),
+                .foregroundColor: shortcut.tint,
+                .paragraphStyle: paragraph
+            ]
+        )
+        return width
     }
 
     /// One connected rectangle with the same stroke width on every edge.

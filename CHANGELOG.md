@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Web search shortcuts
+- Type a configurable prefix, a space and a query (for example `GB Bilder von Hunden` or `T Despacito`) to open that search directly on the matching website.
+- Ship defaults for Google, YouTube, Epidemic Sound, Google Images, X, Instagram, Facebook, Tidal, Spotify, YouTube Music, Amazon, Steam and Twitch.
+- Manage prefixes and search URL templates in **Settings → KÜRZEL**; favicons are fetched automatically for new shortcuts.
+- Show shortcut results with the site icon, a colour-framed prefix badge and the search query.
+
 ### Launcher
 - Clicking outside the launcher or the character-picker panel now closes it and replays that first click to the app or control underneath. Clicks covered by a CSL window itself are not replayed. The character picker also keeps a close-only fallback when the event tap is unavailable, and Cmd+A selects its search text for immediate replacement.
 

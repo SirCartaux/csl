@@ -14,6 +14,7 @@ enum PixelGlyph: String {
     case ban
     case sparkle
     case clipboard
+    case key
 
     private var bitmap: [String] {
         switch self {
@@ -158,6 +159,19 @@ enum PixelGlyph: String {
                 "#.######.#",
                 "#........#",
                 "##########",
+                ".........."
+            ]
+        case .key:
+            return [
+                "..######..",
+                ".#......#.",
+                ".#.####.#.",
+                ".#.#..#.#.",
+                ".#.####.#.",
+                ".#......#.",
+                ".#..##..#.",
+                ".#..##..#.",
+                "..######..",
                 ".........."
             ]
         }

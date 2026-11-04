@@ -5,6 +5,7 @@ enum SettingsTab: String, CaseIterable {
     case ignore
     case websites
     case aliases
+    case shortcuts
     case animation
     case general
 
@@ -14,6 +15,7 @@ enum SettingsTab: String, CaseIterable {
         case .ignore: return "IGNORIEREN"
         case .websites: return "WEBSITES"
         case .aliases: return "ALIASSE"
+        case .shortcuts: return "KÜRZEL"
         case .animation: return "ANIMATION"
         case .general: return "ALLGEMEIN"
         }
@@ -70,7 +72,8 @@ final class SettingsWindowController: NSObject {
                      .cslIndexChanged,
                      .cslIndexStateChanged,
                      .cslWebsiteIconUpdated,
-                     .cslAliasesChanged] {
+                     .cslAliasesChanged,
+                     .cslShortcutsChanged] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 guard let self else { return }
                 self.sections.values.forEach { $0.reload() }
@@ -150,6 +153,8 @@ final class SettingsWindowController: NSObject {
             section = WebsitesSection(frame: rootView.contentContainer.bounds)
         case .aliases:
             section = AliasSection(frame: rootView.contentContainer.bounds)
+        case .shortcuts:
+            section = ShortcutSection(frame: rootView.contentContainer.bounds)
         case .animation:
             section = AnimationSection(frame: rootView.contentContainer.bounds)
         case .general:

@@ -34,6 +34,9 @@ final class SearchEngine {
     private var started: CFTimeInterval = 0
     private var loggedFirstUpdate = false
     private var aliasObserver: NSObjectProtocol?
+    private var iconObserver: NSObjectProtocol?
+    private var shortcutObserver: NSObjectProtocol?
+    private var shortcutActive = false
 
     var lastQuery: String { currentQuery }
 
@@ -46,11 +49,33 @@ final class SearchEngine {
             guard let self, self.searchActive else { return }
             self.emit()
         }
+        iconObserver = NotificationCenter.default.addObserver(
+            forName: .cslWebsiteIconUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.searchActive else { return }
+            self.emit()
+        }
+        shortcutObserver = NotificationCenter.default.addObserver(
+            forName: .cslShortcutsChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.searchActive else { return }
+            self.search(self.currentQuery)
+        }
     }
 
     deinit {
         if let aliasObserver {
             NotificationCenter.default.removeObserver(aliasObserver)
+        }
+        if let iconObserver {
+            NotificationCenter.default.removeObserver(iconObserver)
+        }
+        if let shortcutObserver {
+            NotificationCenter.default.removeObserver(shortcutObserver)
         }
     }
 
@@ -84,12 +109,23 @@ final class SearchEngine {
         loggedFirstUpdate = false
 
         guard !trimmed.isEmpty else {
+            shortcutActive = false
             instantResults = commandProvider.allResults()
             fileSearching = false
             indexSearching = false
             emit()
             return
         }
+
+        if let shortcut = ShortcutStore.shared.result(for: trimmed) {
+            shortcutActive = true
+            instantResults = [shortcut]
+            fileSearching = false
+            indexSearching = false
+            emit()
+            return
+        }
+        shortcutActive = false
 
         if let google = WebSearchProvider.result(for: trimmed) {
             instantResults = [google]
@@ -125,6 +161,7 @@ final class SearchEngine {
 
     func cancel() {
         searchActive = false
+        shortcutActive = false
         streamUpdate?.cancel(); streamUpdate = nil
         fileIndex.cancelSearch()
         generation += 1
@@ -137,6 +174,10 @@ final class SearchEngine {
     }
 
     private func refreshInstantResults() {
+        if shortcutActive {
+            emit()
+            return
+        }
         started = CACurrentMediaTime()
         if currentQuery.isEmpty {
             instantResults = commandProvider.allResults()
@@ -226,7 +267,8 @@ final class SearchEngine {
 
     /// Only fold in new index entries; do not restart the Spotlight query.
     func refreshIndexResults() {
-        guard searchActive, !currentQuery.isEmpty, WebSearchProvider.query(from: currentQuery) == nil else { return }
+        guard searchActive, !shortcutActive, !currentQuery.isEmpty,
+              WebSearchProvider.query(from: currentQuery) == nil else { return }
         searchIndex(for: currentQuery, generation: generation)
     }
 
@@ -249,11 +291,16 @@ final class SearchEngine {
 
     private func emit() {
         var seen = Set<String>()
-        var merged = AliasStore.shared.results(for: currentQuery)
-            .filter { seen.insert($0.id).inserted }
-        merged.append(contentsOf: instantResults.filter { seen.insert($0.id).inserted })
-        merged.append(contentsOf: streamedFileResults.filter { seen.insert($0.id).inserted })
-        merged.append(contentsOf: fileResults.filter { seen.insert($0.id).inserted })
+        var merged: [SearchResult]
+        if shortcutActive {
+            merged = instantResults.filter { seen.insert($0.id).inserted }
+        } else {
+            merged = AliasStore.shared.results(for: currentQuery)
+                .filter { seen.insert($0.id).inserted }
+            merged.append(contentsOf: instantResults.filter { seen.insert($0.id).inserted })
+            merged.append(contentsOf: streamedFileResults.filter { seen.insert($0.id).inserted })
+            merged.append(contentsOf: fileResults.filter { seen.insert($0.id).inserted })
+        }
         merged = ResultRanker.shared.ranked(merged, query: currentQuery)
 
         if !loggedFirstUpdate {

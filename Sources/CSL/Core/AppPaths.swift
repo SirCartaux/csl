@@ -16,6 +16,7 @@ enum AppPaths {
     static var indexFile: URL { baseDirectory.appendingPathComponent("index.json") }
     static var rankingFile: URL { baseDirectory.appendingPathComponent("ranking.json") }
     static var aliasesFile: URL { baseDirectory.appendingPathComponent("aliases.json") }
+    static var shortcutsFile: URL { baseDirectory.appendingPathComponent("shortcuts.json") }
     static var iconsDirectory: URL { baseDirectory.appendingPathComponent("icons", isDirectory: true) }
     static var clipboardDirectory: URL { baseDirectory.appendingPathComponent("clipboard", isDirectory: true) }
     static var clipboardBlobsDirectory: URL { clipboardDirectory.appendingPathComponent("blobs", isDirectory: true) }
@@ -45,5 +46,6 @@ extension Notification.Name {
     static let cslWebsiteIconUpdated = Notification.Name("csl.websiteIconUpdated")
     static let cslClipboardChanged = Notification.Name("csl.clipboardChanged")
     static let cslAliasesChanged = Notification.Name("csl.aliasesChanged")
+    static let cslShortcutsChanged = Notification.Name("csl.shortcutsChanged")
     static let cslOpenClipboardHistory = Notification.Name("csl.openClipboardHistory")
 }
