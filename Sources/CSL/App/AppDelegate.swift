@@ -533,6 +533,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: - Actions
 
     private func perform(_ result: SearchResult, reveal: Bool) {
+        if case .complete(let text) = result.action {
+            viewController.fillSearchInput(text)
+            return
+        }
         guard !launchInProgress else { return }
         launchInProgress = true
         launchCompletionScheduled = false
@@ -566,6 +570,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     if success {
                         if record {
                             ResultRanker.shared.record(result, query: query, revealed: reveal)
+                            if result.kind == .website, !reveal {
+                                QuerySuggestionHistory.shared.recordSuccessful(result, raw: query)
+                            }
                         }
                         self.hidePanel(restoreFocus: false)
                     } else {
@@ -631,6 +638,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let success = await ProcessActionRunner.run(command, program: program)
                 finish(success, record: false)
             }
+
+        case .complete:
+            finish(false, record: false) // Handled before starting launch feedback.
 
         case .run(let action):
             action()

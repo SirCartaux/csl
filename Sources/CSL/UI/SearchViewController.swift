@@ -20,6 +20,9 @@ final class SearchViewController: NSViewController {
     private let placeholderView = SearchPlaceholderView()
     private let searchActivity = PixelActivityView()
     private let searchPrompt = SearchPromptView(frame: .zero)
+    let commandRecognition = CommandRecognitionView(frame: .zero)
+    let completionView = SearchCompletionView(frame: .zero)
+    private var pendingNavigationOffset: Int?
     private let clipboardButton = ClipboardHeaderButton(frame: .zero)
     private let clipboardView = ClipboardHistoryListView(frame: .zero)
     private var clipboardMode = false
@@ -115,8 +118,11 @@ final class SearchViewController: NSViewController {
             self?.onPaste?()
         }
         rootView.addSubview(searchField)
+        completionView.isHidden = true
+        rootView.addSubview(completionView)
         rootView.addSubview(placeholderView)
         rootView.addSubview(searchPrompt)
+        rootView.addSubview(commandRecognition)
         rootView.addSubview(glowView)
 
         resizeHandle.frame = rootView.bounds
@@ -203,6 +209,7 @@ final class SearchViewController: NSViewController {
 
         glowView.frame = view.bounds
         interactionEffects.frame = view.bounds
+        commandRecognition.frame = view.bounds
         resizeHandle.frame = view.bounds
         scrollView.frame = listRect
         clipboardView.frame = listRect
@@ -227,6 +234,8 @@ final class SearchViewController: NSViewController {
             height: promptUnit * 5 + promptPadding * 2
         )
         updateCalculatorHint()
+        updateCommandRecognition()
+        updateCompletionHint()
 
         if let column = tableView.tableColumns.first {
             column.width = listRect.width
@@ -278,8 +287,10 @@ final class SearchViewController: NSViewController {
     private func buildField() {
         searchField.delegate = self
         searchField.setAccessibilityLabel("Search")
+        searchField.setAccessibilityHelp("Tab selects suggestions. Right arrow completes the input. Enter opens or runs the selection. Escape closes the launcher.")
         searchField.onMouseDown = { [weak self] in
             self?.isNavigatingResults = false
+            self?.completionView.isHidden = true
         }
     }
 
@@ -349,6 +360,10 @@ final class SearchViewController: NSViewController {
 
     func prepareForPresentation() {
         restoreLaunchPresentation()
+        commandRecognition.stop()
+        completionView.isHidden = true
+        rootView.hasCompletion = false
+        pendingNavigationOffset = nil
         deferredResults = nil
         queryWork?.cancel()
         queryWork = nil
@@ -568,6 +583,10 @@ final class SearchViewController: NSViewController {
     }
 
     func stopGlow() {
+        commandRecognition.stop()
+        completionView.isHidden = true
+        pendingNavigationOffset = nil
+        searchPrompt.stop()
         queryWork?.cancel()
         queryWork = nil
         pinchAnchor = nil
@@ -577,7 +596,9 @@ final class SearchViewController: NSViewController {
     }
 
     func focus() {
-        view.window?.makeFirstResponder(searchField)
+        // Re-entering an already active field editor clears its pending undo
+        // state. Keep that native editing session when only moving the caret.
+        if searchField.currentEditor() == nil { view.window?.makeFirstResponder(searchField) }
         searchField.styleEditor()
         if let editor = searchField.currentEditor() as? NSTextView {
             let end = (searchField.stringValue as NSString).length
@@ -669,6 +690,7 @@ final class SearchViewController: NSViewController {
 
         self.results = results
 
+        var fulfilledPendingNavigation = false
         if resetSelectionOnNextUpdate {
             selectedIndex = 0
             resetSelectionOnNextUpdate = false
@@ -681,6 +703,13 @@ final class SearchViewController: NSViewController {
         if results.isEmpty {
             selectedIndex = 0
             isNavigatingResults = false
+            if !isSearching { pendingNavigationOffset = nil }
+        } else if let offset = pendingNavigationOffset {
+            fulfilledPendingNavigation = true
+            selectedIndex = ((offset % results.count) + results.count) % results.count
+            pendingNavigationOffset = nil
+            userNavigated = true
+            isNavigatingResults = true
         }
 
         resizeTable()
@@ -713,6 +742,7 @@ final class SearchViewController: NSViewController {
         rootView.query = searchField.stringValue
         rootView.resultCount = results.count
         rootView.isSearching = isSearching
+        updateCompletionHint()
         rootView.needsDisplay = true
         refreshWindowSize()
         if pendingResultFlash {
@@ -727,10 +757,10 @@ final class SearchViewController: NSViewController {
                 NSSound.beep()
                 Log.debug("queued enter: no results")
             } else {
-                selectedIndex = 0
-                tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-                tableView.scrollRowToVisible(0)
-                Log.debug("queued enter opening first result: \(results[0].title)")
+                if !fulfilledPendingNavigation { selectedIndex = 0 }
+                tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
+                tableView.scrollRowToVisible(selectedIndex)
+                Log.debug("queued enter opening result: \(results[selectedIndex].title)")
                 let reveal = pendingOpenReveal
                 pendingOpenReveal = false
                 chooseSelected(reveal: reveal)
@@ -743,11 +773,13 @@ final class SearchViewController: NSViewController {
             animateNewRows(newRows)
         }
         updateInteractionSelection(animated: true)
+        updateCompletionHint()
     }
 
     // MARK: - Selection
 
     private func moveSelection(by delta: Int) {
+        pendingNavigationOffset = nil
         pendingOpenAfterSearch = false
         guard resultsAreCurrent, !rootView.graphActive, !results.isEmpty else { return }
         let next = max(0, min(results.count - 1, selectedIndex + delta))
@@ -758,20 +790,34 @@ final class SearchViewController: NSViewController {
         tableView.reloadData()
         tableView.scrollRowToVisible(selectedIndex)
         updateInteractionSelection(animated: true)
+        updateCompletionHint()
     }
 
-    private func cycleProcessSelection(by delta: Int) {
+    private func navigateWithTab(by delta: Int) {
         pendingOpenAfterSearch = false
-        guard resultsAreCurrent, !results.isEmpty else { return }
+        guard launchingResultID == nil, !rootView.graphActive, !clipboardMode else { return }
+        if queryWork != nil || !resultsAreCurrent || (results.isEmpty && rootView.isSearching) {
+            pendingNavigationOffset = (pendingNavigationOffset ?? (delta > 0 ? -1 : 0)) + delta
+            if let work = queryWork {
+                work.cancel()
+                queryWork = nil
+                engine?.search(searchField.stringValue)
+            }
+            return
+        }
+        guard !results.isEmpty else { return }
+        let next = isNavigatingResults ? selectedIndex + delta : (delta > 0 ? 0 : results.count - 1)
+        selectedIndex = ((next % results.count) + results.count) % results.count
         userNavigated = true
         isNavigatingResults = true
-        selectedIndex = (selectedIndex + delta + results.count) % results.count
         tableView.reloadData()
         tableView.scrollRowToVisible(selectedIndex)
         updateInteractionSelection(animated: true)
+        updateCompletionHint()
     }
 
     func cancelPendingOpen() {
+        pendingNavigationOffset = nil
         pendingOpenAfterSearch = false
     }
 
@@ -801,6 +847,10 @@ final class SearchViewController: NSViewController {
     private func chooseSelected(reveal: Bool) {
         guard resultsAreCurrent, !rootView.graphActive else { return }
         guard results.indices.contains(selectedIndex) else { return }
+        if case .complete(let text) = results[selectedIndex].action {
+            fillSearchInput(text)
+            return
+        }
         Log.debug("open result: \(results[selectedIndex].title)")
         onChoose?(results[selectedIndex], reveal)
     }
@@ -816,6 +866,7 @@ final class SearchViewController: NSViewController {
         focus()
         tableView.scrollRowToVisible(row)
         updateInteractionSelection(animated: true)
+        updateCompletionHint()
         Log.debug("row selected: \(row)")
     }
 
@@ -825,16 +876,6 @@ final class SearchViewController: NSViewController {
         tableView.reloadData()
         Log.debug("row double-clicked: \(row)")
         chooseSelected(reveal: NSEvent.modifierFlags.contains(.command))
-    }
-
-    private func beginResultsNavigation() {
-        pendingOpenAfterSearch = false
-        guard resultsAreCurrent, !rootView.graphActive, !results.isEmpty else { return }
-        isNavigatingResults = true
-        selectedIndex = 0
-        tableView.reloadData()
-        tableView.scrollRowToVisible(0)
-        updateInteractionSelection(animated: true)
     }
 
     // MARK: - Quick Look
@@ -851,7 +892,7 @@ final class SearchViewController: NSViewController {
         switch result.action {
         case .open(let url), .reveal(let url):
             return url.isFileURL ? url : nil
-        case .run, .manage:
+        case .run, .manage, .complete:
             return nil
         }
     }
@@ -1056,6 +1097,8 @@ final class SearchViewController: NSViewController {
             menu.addItem(contextItem("Copy Path", #selector(contextCopyPath)))
             menu.addItem(.separator())
             menu.addItem(contextItem("Add Alias…", #selector(contextAddAlias)))
+        case .complete:
+            menu.addItem(contextItem("Complete", #selector(contextRun)))
         case .run, .manage:
             menu.addItem(contextItem("Run", #selector(contextRun)))
         }
@@ -1078,7 +1121,7 @@ final class SearchViewController: NSViewController {
         switch result.action {
         case .open(let url), .reveal(let url):
             return url.isFileURL ? url : nil
-        case .run, .manage:
+        case .run, .manage, .complete:
             return nil
         }
     }
@@ -1143,6 +1186,10 @@ final class SearchViewController: NSViewController {
         }
 
         clipboardMode = true
+        commandRecognition.stop()
+        completionView.isHidden = true
+        rootView.hasCompletion = false
+        pendingNavigationOffset = nil
         pendingOpenAfterSearch = false
         queryWork?.cancel()
         queryWork = nil
@@ -1227,6 +1274,10 @@ final class SearchViewController: NSViewController {
         pendingOpenAfterSearch = false
         deferredResults = nil
         launchingResultID = result.id
+        commandRecognition.stop()
+        completionView.isHidden = true
+        rootView.hasCompletion = false
+        pendingNavigationOffset = nil
         queryWork?.cancel()
         queryWork = nil
         engine?.cancel()
@@ -1364,6 +1415,74 @@ final class SearchViewController: NSViewController {
 // MARK: - NSTextFieldDelegate
 
 extension SearchViewController: NSTextFieldDelegate {
+    private var selectedInputCompletion: String? {
+        guard !clipboardMode, !rootView.graphActive, launchingResultID == nil,
+              resultsAreCurrent, results.indices.contains(selectedIndex),
+              let completion = results[selectedIndex].inputCompletion,
+              completion.caseInsensitiveCompare(searchField.stringValue) != .orderedSame else { return nil }
+        return completion
+    }
+
+    private func updateCompletionHint() {
+        completionView.isHidden = true
+        rootView.hasCompletion = selectedInputCompletion != nil
+        if results.indices.contains(selectedIndex), case .complete = results[selectedIndex].action {
+            rootView.selectionCompletesInput = true
+        } else { rootView.selectionCompletesInput = false }
+        rootView.navigatingResults = isNavigatingResults
+        guard let completion = selectedInputCompletion,
+              let suffix = SearchCompletionView.suffix(for: searchField.stringValue, completion: completion) else { return }
+        let caret = searchField.inputCaretRect()
+        guard !caret.isNull else { return }
+        let x = searchField.frame.minX + caret.maxX + Theme.ls(1)
+        let width = searchField.frame.maxX - x - Theme.ls(4)
+        guard width > Theme.ls(18) else { return }
+        completionView.suffix = suffix
+        completionView.frame = CGRect(x: x, y: searchField.frame.minY, width: width, height: searchField.frame.height)
+        completionView.isHidden = false
+    }
+
+    /// Use a native replacement so accepting a suggestion is one undoable
+    /// edit, separate from typing. Prefix suggestions still execute no action.
+    func fillSearchInput(_ completion: String) {
+        pendingNavigationOffset = nil
+        if let editor = searchField.currentEditor() as? NSTextView, !editor.hasMarkedText() {
+            editor.allowsUndo = true
+            editor.breakUndoCoalescing()
+            editor.insertText(completion, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+            editor.breakUndoCoalescing()
+        } else {
+            setSearchText(completion)
+        }
+        focus()
+    }
+
+    @discardableResult
+    func completeSelectedInput() -> Bool {
+        if let editor = searchField.currentEditor() as? NSTextView {
+            guard !editor.hasMarkedText(),
+                  editor.selectedRange == NSRange(location: (editor.string as NSString).length, length: 0) else { return false }
+        }
+        if let work = queryWork {
+            work.cancel()
+            queryWork = nil
+            engine?.search(searchField.stringValue)
+        }
+        guard let completion = selectedInputCompletion else { return false }
+        fillSearchInput(completion)
+        return true
+    }
+
+    private func updateCommandRecognition() {
+        let prefix = searchField.inlinePrefixRect()
+        commandRecognition.update(
+            command: clipboardMode ? nil : searchField.inlineCommand,
+            prefixRect: prefix.isNull ? .null : rootView.convert(prefix, from: searchField),
+            fieldRect: Layout.fieldRect(in: rootView.bounds),
+            animated: animationsEnabled && view.window?.isVisible == true
+        )
+    }
+
     private func updateCalculatorHint() {
         guard !clipboardMode, !rootView.graphActive,
               let calculation = Calculator.evaluate(searchField.stringValue),
@@ -1429,6 +1548,9 @@ extension SearchViewController: NSTextFieldDelegate {
         let inline = clipboardMode ? nil : InlineCommand.parse(searchField.stringValue, shortcuts: ShortcutStore.shared.shortcuts)
         searchField.inlineCommand = inline
         rootView.inlineCommand = inline
+        completionView.isHidden = true
+        rootView.hasCompletion = false
+        pendingNavigationOffset = nil
         lastQueryEdit = CACurrentMediaTime()
         pendingOpenAfterSearch = false
         if clipboardMode {
@@ -1487,6 +1609,8 @@ extension SearchViewController: NSTextFieldDelegate {
         }
         updateCalculatorHint()
         refreshWindowSize()
+        updateCommandRecognition()
+        updateCompletionHint()
         updateInteractionSelection(animated: false)
         rootView.needsDisplay = true
     }
@@ -1514,24 +1638,15 @@ extension SearchViewController: NSTextFieldDelegate {
             textView.selectAll(nil)
             return true
         case #selector(NSResponder.insertTab(_:)):
-            if rootView.inlineCommand?.processCommand != nil {
-                cycleProcessSelection(by: 1)
-            } else if isNavigatingResults {
-                moveSelection(by: 1)
-            } else {
-                beginResultsNavigation()
-            }
+            navigateWithTab(by: 1)
             return true
         case #selector(NSResponder.insertBacktab(_:)):
-            if rootView.inlineCommand?.processCommand != nil {
-                cycleProcessSelection(by: -1)
-            } else if isNavigatingResults {
-                moveSelection(by: -1)
-            } else {
-                beginResultsNavigation()
-            }
+            navigateWithTab(by: -1)
             return true
+        case #selector(NSResponder.moveRight(_:)), #selector(NSResponder.moveForward(_:)):
+            return completeSelectedInput()
         default:
+            completionView.isHidden = true
             return false
         }
     }

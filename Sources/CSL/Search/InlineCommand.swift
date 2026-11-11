@@ -20,6 +20,23 @@ struct InlineCommand {
     let prefixRange: NSRange
     let query: String
 
+    /// Arguments and letter case do not change the command's identity.
+    var recognitionID: String {
+        switch kind {
+        case .process(let command): return "process:" + command.rawValue
+        case .shortcut(let shortcut): return "shortcut:" + shortcut.id.uuidString
+        case .google: return "google"
+        }
+    }
+
+    var contextLabel: String {
+        switch kind {
+        case .process(let command): return "RUNNING APPS / " + command.label
+        case .shortcut(let shortcut): return "WEB SEARCH / " + shortcut.name.uppercased()
+        case .google: return "WEB SEARCH / GOOGLE"
+        }
+    }
+
     var tint: NSColor {
         switch kind {
         case .process(let command): return command.tint

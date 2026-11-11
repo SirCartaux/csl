@@ -124,8 +124,8 @@ annotations; `Tools/generate_emoji.py` reproduces it.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.8.0.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.8.0.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.8.1.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.8.1.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
@@ -138,6 +138,38 @@ starts normally.
 
 ---
 
+## Search suggestions and keyboard flow
+
+Apps and indexed files continue to appear as you type. Prefix suggestions also
+help discover commands and custom website shortcuts: `sto` suggests `stop`,
+`res` suggests `restart`, and `G` or `KL` offer the configured website search.
+Accepting a prefix fills the input and opens its mode; it never runs a process action.
+
+| Key | Action |
+| --- | --- |
+| First `Tab` | Select the first current result |
+| Further `Tab` / `Shift+Tab` | Move forward / backward, wrapping at the ends |
+| `Enter` | Open/run the selected result, or the first result when none was chosen |
+| `Right` at the end of the input | Fill the selected completion without executing it |
+| `Esc` | Close the launcher |
+
+A faint suffix previews a matching completion without changing the typed text.
+Tab does not overwrite the query. New typing resets selection; streamed results
+preserve the selected item. Quick Tab/Enter sequences wait for the current query
+and cannot execute an old retained row. Native cursor movement inside the query
+and text composition retain their normal behavior. An accepted completion is
+a single undoable edit.
+
+Explicit web prefixes offer matching queries from successful previous searches
+on that same provider. The current typed search remains first, so Enter keeps
+its exact-search behavior. Suggestions stay local, are bounded to 80 entries,
+and require no network requests or background polling. No prior history means
+there are no previous web-query suggestions yet. Use `CLEAR SEARCH SUGGESTIONS`
+to remove this local history. It is stored in `search-suggestions.json` beside
+the other CSL settings.
+
+---
+
 ## Running apps and inline commands
 
 Type `stop` or `restart` (case-insensitive) to list running applications, including
@@ -145,7 +177,7 @@ hidden and minimized apps. Add a name to filter with the same fuzzy matching as
 the launcher: `stop Safari` or `Restart Visual Studio Code`.
 
 - `Enter` acts on the first result, or the app you selected.
-- `Tab` / `Shift+Tab` cycle forward / backward and wrap around the list.
+- The first `Tab` selects the first result. Further `Tab` presses move down; `Shift+Tab` moves back. Both wrap around the list.
 - `Esc` closes the launcher and releases the running-app list.
 - `stop` requests a normal quit. Apps can still ask to save changes or refuse.
 - `restart` waits for the selected process to exit before reopening its original
@@ -161,6 +193,12 @@ Recognized prefixes are bold with a tinted background and underline **in the
 input itself**: red for `stop`, amber for `restart`, and the website's colour for
 custom search shortcuts such as `G query` or `KL query`. The rest of the query
 keeps the normal text style. All text remains editable, selectable and copyable.
+Newly recognized prefixes receive a brief coloured confirmation and a light sweep
+through the search row. Editing the argument does not replay the animation.
+Effects use reused compositor layers, finish automatically, and respect the
+motion setting. The outer halo settles after opening instead of looping.
+The launcher uses calmer rounded surfaces, softer badges and contextual headers.
+
 Website prefixes activate after a space; `G ` shows a prompt for a search term.
 `STOP` and `RESTART` are reserved command names and take precedence over older
 website shortcuts with those names. Existing custom prefixes and settings are preserved.
@@ -208,7 +246,7 @@ when clicked.
 | `⌘Space` | Open / close the panel |
 | Type | Search (apps and websites instantly, index files in ~5–40 ms, Spotlight streams in) |
 | `↑` / `↓` | Move selection |
-| `Tab` / `⇧Tab` | Select the first result, then move the selection |
+| `Tab` / `⇧Tab` | Select the first result, then move forward / backward with wraparound |
 | `Enter` | Open the current selection immediately, even while more results are loading; if no current result exists, open the first arriving hit |
 | `⌘Enter` | Reveal in Finder |
 | `Space` | Quick Look for a file result (after mouse selection, `Tab` or arrows); press again to close; otherwise a space in the query |

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.1 — 2026-11-11
+
+### Local suggestions and keyboard flow
+- Suggest matching process commands and configured website prefixes before entering their modes. Accepting a prefix only fills the input.
+- Show matching prior web queries for the current provider from a bounded local history of successful searches. Typing sends no suggestion request to a server. Add a command to clear that history.
+- Preview completions as a faint suffix. Right arrow at the end fills the selected completion; Enter performs the selected action. Native cursor movement inside the query stays intact.
+- Make the first Tab select the first result in every mode, subsequent Tab move down, and Shift+Tab move back, with wraparound. Keep the input unchanged while browsing.
+- Flush pending query edits for keyboard navigation, preserve selection across streamed batches, and respect queued Tab/Enter choices without executing stale rows.
+
+### Command recognition and visual refinement
+- Confirm newly recognized process and web-search prefixes with a brief tinted outline, soft field wash and travelling light. Argument edits and letter-case changes do not replay it.
+- Reuse a fixed effect layer pool, remove transient effects on dismissal/clipboard mode/action execution, and respect the existing motion preference.
+- Replace the repeating outer glow with a finite entrance and a restrained static rim.
+- Refine the launcher with rounded layered surfaces, calmer selection cards, softer shortcut badges, clearer secondary text and contextual header labels.
+- Soften prompt and execution pulses and keep native editing, cursor position, scrolling and undo intact.
+
 ## 0.8.0 — 2026-11-11
 
 ### On-demand task manager

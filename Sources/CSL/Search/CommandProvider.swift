@@ -73,6 +73,15 @@ final class CommandProvider {
             showsWhenEmpty: false
         ),
         Command(
+            id: "cmd:clear-suggestions",
+            title: "CLEAR SEARCH SUGGESTIONS",
+            subtitle: "DELETE LOCAL WEB SEARCH HISTORY",
+            keywords: ["clear suggestions", "clear search history", "suchvorschläge löschen", "suchverlauf löschen"],
+            glyph: .trash,
+            action: .run { QuerySuggestionHistory.shared.clear() },
+            showsWhenEmpty: false
+        ),
+        Command(
             id: "cmd:csl-settings",
             title: "CSL SETTINGS",
             subtitle: "INDEX, FILTER, WEBSITES",

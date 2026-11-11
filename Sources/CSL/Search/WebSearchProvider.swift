@@ -30,6 +30,7 @@ enum WebSearchProvider {
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         guard let url = components.url else { return nil }
         return SearchResult(id: "google:"+query, title: "SEARCH GOOGLE", subtitle: query,
-                            kind: .website, icon: .glyph(.globe), score: 1100, titleMatch: [], action: .open(url))
+                            kind: .website, icon: .glyph(.globe), score: 1100, titleMatch: [], action: .open(url),
+                            completion: raw.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }

@@ -91,7 +91,7 @@ final class InteractionEffectsView: NSView {
         for (light, alpha) in [(selectionLight, CGFloat(0.12)), (hoverLight, CGFloat(0.075))] {
             light.colors = [Theme.accent.withAlphaComponent(alpha).cgColor, Theme.accent.withAlphaComponent(alpha*0.2).cgColor, NSColor.clear.cgColor]
             light.startPoint = CGPoint(x:0,y:0.5); light.endPoint = CGPoint(x:1,y:0.5)
-            light.cornerRadius = 3
+            light.cornerRadius = 6
             light.borderWidth = 0.5
             light.borderColor = Theme.accent.withAlphaComponent(alpha*2).cgColor
             light.opacity = 0
@@ -185,7 +185,7 @@ final class InteractionEffectsView: NSView {
     }
 
     private func localList(_ rect: CGRect) -> CGRect {
-        rect.offsetBy(dx:-listOrigin.x,dy:-listOrigin.y).insetBy(dx:Theme.ls(1),dy:0.5)
+        rect.offsetBy(dx:-listOrigin.x,dy:-listOrigin.y).insetBy(dx:Theme.ls(6),dy:Theme.ls(2))
     }
     func setHover(_ rect: CGRect?) {
         guard hoverFrame != rect else { return }
@@ -208,7 +208,7 @@ final class InteractionEffectsView: NSView {
         guard active else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(!animated || previous == nil || !InteractionMotion.enabled)
-        CATransaction.setAnimationDuration(0.16)
+        CATransaction.setAnimationDuration(0.20)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints:0.18,0.85,0.25,1))
         if let rect { selectionLight.frame = localList(rect) }
         selectionLight.opacity = rect == nil ? 0 : 1

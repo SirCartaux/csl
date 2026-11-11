@@ -216,7 +216,8 @@ final class ShortcutStore {
                 prefix: shortcut.prefix,
                 name: shortcut.name,
                 tint: shortcut.tint
-            )
+            ),
+            completion: shortcut.prefix + " " + query
         )
     }
 }

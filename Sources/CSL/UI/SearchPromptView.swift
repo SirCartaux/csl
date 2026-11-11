@@ -42,26 +42,24 @@ final class SearchPromptView: NSView {
     }
 
     func pulse() {
-        chevron.removeAnimation(forKey: "promptScale")
-        chevron.removeAnimation(forKey: "promptGlow")
-        chevron.removeAnimation(forKey: "promptGlowRadius")
-
+        stop()
+        guard InteractionMotion.enabled else { return }
         let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [1.0, 1.18, 1.0]
+        scale.values = [1.0, 1.09, 1.0]
         scale.keyTimes = [0, 0.32, 1]
         scale.duration = 0.22
         scale.timingFunction = CAMediaTimingFunction(name: .easeOut)
         chevron.add(scale, forKey: "promptScale")
 
         let glow = CAKeyframeAnimation(keyPath: "shadowOpacity")
-        glow.values = [0.15, 1.0, 0.2]
+        glow.values = [0.0, 0.45, 0.0]
         glow.keyTimes = [0, 0.35, 1]
         glow.duration = 0.36
         glow.timingFunction = CAMediaTimingFunction(name: .easeOut)
         chevron.add(glow, forKey: "promptGlow")
 
         let radius = CAKeyframeAnimation(keyPath: "shadowRadius")
-        radius.values = [Theme.ls(2), Theme.ls(7), Theme.ls(3)]
+        radius.values = [Theme.ls(2), Theme.ls(4), Theme.ls(2)]
         radius.keyTimes = [0, 0.35, 1]
         radius.duration = 0.36
         radius.timingFunction = CAMediaTimingFunction(name: .easeOut)

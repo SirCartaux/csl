@@ -103,6 +103,9 @@ final class RootView: NSView {
     var query: String = ""
     var inlineCommand: InlineCommand? { didSet { needsDisplay = true } }
     var resultCount: Int = 0
+    var hasCompletion = false { didSet { if oldValue != hasCompletion { needsDisplay = true } } }
+    var selectionCompletesInput = false { didSet { if oldValue != selectionCompletesInput { needsDisplay = true } } }
+    var navigatingResults = false { didSet { if oldValue != navigatingResults { needsDisplay = true } } }
     var isSearching: Bool = false
     var graphActive = false { didSet { needsDisplay = true } }
     var clipboardMode = false { didSet { needsDisplay = true } }
@@ -139,20 +142,28 @@ final class RootView: NSView {
         guard !showsOnlyLaunchingResult else { return }
         let panel = Layout.panelRect(in: bounds)
 
-        // 1. hard pixel drop shadow
-        PixelDraw.fill(panel.offsetBy(dx: Theme.ls(4), dy: Theme.ls(4)), Theme.shadow)
-
-        // 2. surface
-        PixelDraw.fill(panel, Theme.bg)
-
-        // 3. border (the animated halo/rim lives in GlowView above this view)
-        let borderColor = Theme.border.blended(withFraction: 0.16, of: Theme.accent) ?? Theme.border
-        PixelDraw.frame(panel, thickness: max(1, Theme.ls(1)), color: borderColor, notch: Theme.ls(3))
-
+        let surface = NSBezierPath(roundedRect: panel, xRadius: Theme.ls(9), yRadius: Theme.ls(9))
+        if let context = NSGraphicsContext.current?.cgContext {
+            context.saveGState()
+            context.setShadow(offset: CGSize(width: 0, height: Theme.ls(5)), blur: Theme.ls(18),
+                              color: NSColor.black.withAlphaComponent(0.36).cgColor)
+            Theme.bg.setFill()
+            surface.fill()
+            context.restoreGState()
+        }
+        NSGraphicsContext.saveGraphicsState()
+        surface.addClip()
+        NSGradient(starting: Theme.bgRaised, ending: Theme.bg)?.draw(in: surface, angle: 90)
         drawHeader(panel: panel)
         drawSearchRow(panel: panel)
         drawList(panel: panel)
         drawFooter(panel: panel)
+        NSGraphicsContext.restoreGraphicsState()
+        let border = NSBezierPath(roundedRect: panel.insetBy(dx: 0.5, dy: 0.5),
+                                  xRadius: Theme.ls(9), yRadius: Theme.ls(9))
+        border.lineWidth = 1
+        Theme.border.withAlphaComponent(0.85).setStroke()
+        border.stroke()
     }
 
     // MARK: - Header
@@ -182,10 +193,11 @@ final class RootView: NSView {
 
         let subtitleAttributes: [NSAttributedString.Key: Any] = [
             .font: Theme.launcherDisplay(7.5),
-            .foregroundColor: Theme.textFaint
+            .foregroundColor: inlineCommand?.tint.withAlphaComponent(0.8) ?? Theme.textFaint
         ]
-        let subtitleSize = ("COMMAND SEARCH LAUNCHER" as NSString).size(withAttributes: subtitleAttributes)
-        ("COMMAND SEARCH LAUNCHER" as NSString).draw(
+        let subtitle = inlineCommand?.contextLabel ?? "COMMAND SEARCH LAUNCHER"
+        let subtitleSize = (subtitle as NSString).size(withAttributes: subtitleAttributes)
+        (subtitle as NSString).draw(
             in: CGRect(
                 x: rect.minX + Theme.ls(30) + logoSize.width + Theme.ls(10),
                 y: floor(rect.midY - subtitleSize.height / 2),
@@ -347,13 +359,11 @@ final class RootView: NSView {
             return
         }
         var cursor: CGFloat = rect.minX + Theme.ls(18)
-        if let command = inlineCommand?.processCommand {
-            cursor = drawHint(key: "TAB", label: "NEXT APP", at: cursor, centerY: rect.midY)
-            cursor = drawHint(key: "ENTER", label: command.label, at: cursor, centerY: rect.midY)
-        } else {
-            cursor = drawHint(key: "UP/DOWN", label: "NAVIGATE", at: cursor, centerY: rect.midY)
-            cursor = drawHint(key: "ENTER", label: "OPEN", at: cursor, centerY: rect.midY)
-            cursor = drawHint(key: "CMD+ENTER", label: "REVEAL", at: cursor, centerY: rect.midY)
+        cursor = drawHint(key: "TAB", label: navigatingResults ? "NEXT" : "SELECT", at: cursor, centerY: rect.midY)
+        let action = selectionCompletesInput ? "FILL" : (inlineCommand?.processCommand?.label ?? "OPEN")
+        cursor = drawHint(key: "ENTER", label: action, at: cursor, centerY: rect.midY)
+        if hasCompletion {
+            cursor = drawHint(key: "RIGHT", label: "FILL", at: cursor, centerY: rect.midY)
         }
         _ = drawHint(key: "ESC", label: "CLOSE", at: cursor, centerY: rect.midY)
 

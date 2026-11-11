@@ -46,7 +46,7 @@ final class ResultRowView: NSView {
 
         if pendingLaunchAnimation, bounds.width > 1 {
             pendingLaunchAnimation = false
-            setLaunching(isLaunching, animated: true)
+            setLaunching(isLaunching, animated: InteractionMotion.enabled)
         }
 
         launchWash.frame = bounds
@@ -58,7 +58,7 @@ final class ResultRowView: NSView {
         if isLaunching != launching {
             isLaunching = launching
             if bounds.width > 1 {
-                setLaunching(launching, animated: true)
+                setLaunching(launching, animated: InteractionMotion.enabled)
             } else {
                 pendingLaunchAnimation = true
             }
@@ -127,12 +127,15 @@ final class ResultRowView: NSView {
         guard let result else { return }
 
         if isSelected || isLaunching {
-            PixelDraw.fill(bounds, Theme.bgSelected)
+            let selection = NSBezierPath(roundedRect: bounds.insetBy(dx: Theme.ls(6), dy: Theme.ls(2)),
+                                         xRadius: Theme.ls(6), yRadius: Theme.ls(6))
+            Theme.bgSelected.setFill()
+            selection.fill()
             if !isLaunching {
-                PixelDraw.fill(
-                    CGRect(x: 0, y: 0, width: Theme.ls(3), height: bounds.height),
-                    Theme.accent
-                )
+                let accent = result.shortcut?.tint ?? Theme.accent
+                accent.withAlphaComponent(0.8).setFill()
+                NSBezierPath(roundedRect: CGRect(x: Theme.ls(7), y: Theme.ls(12), width: Theme.ls(2), height: Theme.ls(18)),
+                             xRadius: Theme.ls(1), yRadius: Theme.ls(1)).fill()
             }
         } else {
             PixelDraw.hLine(x: Theme.ls(52), y: bounds.maxY - Theme.ls(1), width: bounds.width - Theme.ls(52), color: Theme.line, thickness: max(1, Theme.ls(1)))
@@ -145,12 +148,11 @@ final class ResultRowView: NSView {
         drawIcon(result)
         if let shortcut = result.shortcut {
             let iconBox = CGRect(x: Theme.ls(18), y: Theme.ls(10), width: Theme.ls(22), height: Theme.ls(22))
-            PixelDraw.frame(
-                iconBox.insetBy(dx: -Theme.ls(3), dy: -Theme.ls(3)),
-                thickness: max(1, Theme.ls(1)),
-                color: shortcut.tint.withAlphaComponent(isSelected ? 0.9 : 0.55),
-                notch: Theme.ls(2)
-            )
+            let outline = NSBezierPath(roundedRect: iconBox.insetBy(dx: -Theme.ls(3), dy: -Theme.ls(3)),
+                                       xRadius: Theme.ls(6), yRadius: Theme.ls(6))
+            outline.lineWidth = max(0.5, Theme.ls(0.75))
+            shortcut.tint.withAlphaComponent(isSelected ? 0.5 : 0.25).setStroke()
+            outline.stroke()
         }
 
         var titleRect = Layout.rowLabelRect(in: bounds)
@@ -241,13 +243,13 @@ final class ResultRowView: NSView {
         let width = max(Theme.ls(24), ceil(textSize.width) + Theme.ls(13))
         let rect = CGRect(x: x, y: y + Theme.ls(1), width: width, height: Theme.ls(18))
 
-        PixelDraw.fill(rect, shortcut.tint.withAlphaComponent(0.13))
-        PixelDraw.frame(
-            rect.insetBy(dx: 0.5, dy: 0.5),
-            thickness: max(1, Theme.ls(1)),
-            color: shortcut.tint,
-            notch: Theme.ls(2)
-        )
+        let badge = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5),
+                                 xRadius: Theme.ls(4), yRadius: Theme.ls(4))
+        shortcut.tint.withAlphaComponent(0.1).setFill()
+        badge.fill()
+        badge.lineWidth = max(0.5, Theme.ls(0.75))
+        shortcut.tint.withAlphaComponent(0.5).setStroke()
+        badge.stroke()
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         text.draw(

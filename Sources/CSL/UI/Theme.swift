@@ -12,23 +12,23 @@ extension NSColor {
 }
 
 /// All colours, fonts and metrics in one place.
-/// Palette: warm cream on near-black, one amber accent. No rounded corners, no blur.
+/// Pixel lettering, warm cream and amber on calm, layered dark surfaces.
 enum Theme {
     // Surfaces
-    static let bg = NSColor(hex: 0x0E0E16)
-    static let bgRaised = NSColor(hex: 0x13131E)
-    static let bgSelected = NSColor(hex: 0x1D1D2C)
+    static let bg = NSColor(hex: 0x10121B)
+    static let bgRaised = NSColor(hex: 0x161925)
+    static let bgSelected = NSColor(hex: 0x222737)
     static let shadow = NSColor.black.withAlphaComponent(0.45)
 
     // Lines
-    static let line = NSColor(hex: 0x24243A)
-    static let border = NSColor(hex: 0x3B3B55)
+    static let line = NSColor(hex: 0x282D3D)
+    static let border = NSColor(hex: 0x3D455B)
     static let borderBright = NSColor(hex: 0x62628A)
 
     // Type
     static let text = NSColor(hex: 0xEDE6D6)
-    static let textDim = NSColor(hex: 0x9A9AB4)
-    static let textFaint = NSColor(hex: 0x5E5E7A)
+    static let textDim = NSColor(hex: 0xA0A9BF)
+    static let textFaint = NSColor(hex: 0x76819B)
     static let accent = NSColor(hex: 0xFFC24B)
     static let accentDim = NSColor(hex: 0x9C7429)
     static let danger = NSColor(hex: 0xFF6B6B)

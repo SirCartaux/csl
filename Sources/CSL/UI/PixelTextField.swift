@@ -92,7 +92,7 @@ final class PixelTextField: NSTextField {
             prefixAttributes = [
                 .font: Theme.launcherDisplayBold(20),
                 .foregroundColor: inlineCommand.tint,
-                .backgroundColor: inlineCommand.tint.withAlphaComponent(0.19),
+                .backgroundColor: inlineCommand.tint.withAlphaComponent(0.12),
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
                 .underlineColor: inlineCommand.tint
             ]
@@ -114,5 +114,41 @@ final class PixelTextField: NSTextField {
             attributedStringValue = styled
         }
         hasInlineStyle = inlineCommand != nil
+    }
+
+    func inputCaretRect() -> CGRect {
+        if let editor = currentEditor() as? NSTextView, let window {
+            guard !editor.hasMarkedText() else { return .null }
+            let end = (editor.string as NSString).length
+            guard editor.selectedRange == NSRange(location: end, length: 0) else { return .null }
+            let screen = editor.firstRect(forCharacterRange: NSRange(location: end, length: 0), actualRange: nil)
+            let rect = convert(window.convertFromScreen(screen), from: nil)
+            return rect.maxX <= bounds.maxX && rect.minX >= bounds.minX ? rect : .null
+        }
+        let title = cell?.titleRect(forBounds: bounds) ?? bounds
+        let x = title.minX + attributedStringValue.size().width
+        return x < bounds.maxX ? CGRect(x: x, y: title.minY, width: 0, height: title.height) : .null
+    }
+
+    /// Use the field editor's glyph geometry when it is scrolled. The effect
+    /// must follow the visible prefix rather than guessing from text length.
+    func inlinePrefixRect() -> CGRect {
+        guard let command = inlineCommand else { return .null }
+        if let editor = currentEditor() as? NSTextView, let window {
+            guard !editor.hasMarkedText(),
+                  NSMaxRange(command.prefixRange) <= (editor.string as NSString).length else { return .null }
+            // NSTextInputClient works with both TextKit generations. Reading
+            // layoutManager would switch modern editors into compatibility mode
+            // during a keystroke and can disrupt their pending undo operation.
+            let screenRect = editor.firstRect(forCharacterRange: command.prefixRange, actualRange: nil)
+            return convert(window.convertFromScreen(screenRect), from: nil).intersection(bounds)
+        }
+        let text = attributedStringValue
+        guard NSMaxRange(command.prefixRange) <= text.length else { return .null }
+        let leading = text.attributedSubstring(from: NSRange(location: 0, length: command.prefixRange.location)).size().width
+        let size = text.attributedSubstring(from: command.prefixRange).size()
+        let title = cell?.titleRect(forBounds: bounds) ?? bounds
+        return CGRect(x: title.minX + leading, y: title.midY - size.height / 2,
+                      width: size.width, height: size.height).intersection(bounds)
     }
 }

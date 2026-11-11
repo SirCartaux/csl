@@ -18,6 +18,7 @@ enum ResultAction {
     case reveal(URL)
     case run(() -> Void)
     case manage(ProcessCommand, RunningProgram)
+    case complete(String)
 }
 
 struct ShortcutPresentation {
@@ -36,6 +37,7 @@ struct SearchResult {
     let titleMatch: [NSRange]
     let action: ResultAction
     let shortcut: ShortcutPresentation?
+    let completion: String?
 
     init(
         id: String,
@@ -46,7 +48,8 @@ struct SearchResult {
         score: Int,
         titleMatch: [NSRange],
         action: ResultAction,
-        shortcut: ShortcutPresentation? = nil
+        shortcut: ShortcutPresentation? = nil,
+        completion: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -57,6 +60,7 @@ struct SearchResult {
         self.titleMatch = titleMatch
         self.action = action
         self.shortcut = shortcut
+        self.completion = completion
     }
 
     func withScore(_ newScore: Int) -> SearchResult {
@@ -69,8 +73,19 @@ struct SearchResult {
             score: newScore,
             titleMatch: titleMatch,
             action: action,
-            shortcut: shortcut
+            shortcut: shortcut,
+            completion: completion
         )
+    }
+
+    var inputCompletion: String? {
+        if let completion { return completion }
+        switch action {
+        case .complete(let text): return text
+        case .manage(let command, let program): return command.rawValue + " " + program.name
+        case .open, .reveal: return title
+        case .run: return nil
+        }
     }
 }
 

@@ -38,12 +38,19 @@ final class SearchEngine {
     private var iconObserver: NSObjectProtocol?
     private var shortcutObserver: NSObjectProtocol?
     private var exclusiveActive = false
+    private var suggestionObserver: NSObjectProtocol?
+    private let suggestionHistory: QuerySuggestionHistory?
 
     var lastQuery: String { currentQuery }
 
-    init(processProvider: RunningApplicationProvider = RunningApplicationProvider()) {
+    init(processProvider: RunningApplicationProvider = RunningApplicationProvider(), suggestionHistory: QuerySuggestionHistory? = nil) {
+        self.suggestionHistory = suggestionHistory
         self.processProvider = processProvider
         processProvider.onChange = { [weak self] in
+            guard let self, self.searchActive else { return }
+            self.search(self.currentQuery)
+        }
+        suggestionObserver = NotificationCenter.default.addObserver(forName: .cslSuggestionsChanged, object: nil, queue: .main) { [weak self] _ in
             guard let self, self.searchActive else { return }
             self.search(self.currentQuery)
         }
@@ -75,6 +82,7 @@ final class SearchEngine {
 
     deinit {
         processProvider.stop()
+        if let suggestionObserver { NotificationCenter.default.removeObserver(suggestionObserver) }
         if let aliasObserver {
             NotificationCenter.default.removeObserver(aliasObserver)
         }
@@ -133,13 +141,10 @@ final class SearchEngine {
                 instantResults = processProvider.results(command: command, query: inline.query)
             case .shortcut, .google:
                 processProvider.stop()
-                if inline.query.isEmpty {
-                    instantResults = []
-                } else if let shortcut = ShortcutStore.shared.result(for: raw) {
-                    instantResults = [shortcut]
-                } else {
-                    instantResults = WebSearchProvider.result(for: raw).map { [$0] } ?? []
-                }
+                let direct = inline.query.isEmpty ? nil :
+                    (ShortcutStore.shared.result(for: raw) ?? WebSearchProvider.result(for: raw))
+                instantResults = SearchSuggestions.webResults(command: inline, raw: raw, direct: direct,
+                    history: suggestionHistory ?? QuerySuggestionHistory.shared)
             }
             fileSearching = false
             indexSearching = false
@@ -161,6 +166,7 @@ final class SearchEngine {
         instantResults = appProvider.results(for: trimmed)
             + commandProvider.results(for: trimmed)
             + websiteProvider.results(for: trimmed)
+            + SearchSuggestions.prefixes(for: trimmed, shortcuts: ShortcutStore.shared.shortcuts)
         let cached = fileCache.results(for: trimmed)
         cachedFileResults = cached
         instantResults.append(contentsOf: cached)
@@ -212,6 +218,7 @@ final class SearchEngine {
             instantResults = appProvider.results(for: currentQuery)
                 + commandProvider.results(for: currentQuery)
                 + websiteProvider.results(for: currentQuery)
+                + SearchSuggestions.prefixes(for: currentQuery, shortcuts: ShortcutStore.shared.shortcuts)
             let known = Set(instantResults.map(\.id))
             let cached = fileCache.results(for: currentQuery)
                 .filter { !known.contains($0.id) }

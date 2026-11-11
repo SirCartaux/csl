@@ -120,7 +120,7 @@ final class ProcessCommandTests: XCTestCase {
         press(#selector(NSResponder.insertNewline(_:)))
         press(#selector(NSResponder.insertBacktab(_:)))
         press(#selector(NSResponder.insertNewline(_:)))
-        XCTAssertEqual(selected, ["Code", "Safari", "Code", "Visual Studio Code"])
+        XCTAssertEqual(selected, ["Code", "Code", "Visual Studio Code", "Safari"])
         controller.setSearchText("restart x")
         XCTAssertFalse((controller.view as! RootView).graphActive)
         controller.stopGlow()
