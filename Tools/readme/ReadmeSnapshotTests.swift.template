@@ -1,0 +1,125 @@
+import XCTest
+import AppKit
+@testable import CSL
+@testable import CEPKit
+
+/// Render production AppKit views with curated data. Never opens apps, captures
+/// the desktop, samples processes, registers hotkeys, or reads clipboard history.
+@MainActor
+final class ReadmeSnapshotTests: XCTestCase {
+    private var output: URL!
+
+    private func write(_ view: NSView, name: String) throws {
+        view.layoutSubtreeIfNeeded()
+        view.displayIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.04))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil,
+            pixelsWide: Int(view.bounds.width * 2), pixelsHigh: Int(view.bounds.height * 2),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        bitmap.size = view.bounds.size
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: output.appendingPathComponent(name + ".png"))
+    }
+
+    private func result(_ title: String, _ subtitle: String, kind: ResultKind = .file,
+                        glyph: CSL.PixelGlyph = .folder, prefix: String? = nil) -> SearchResult {
+        SearchResult(id: title, title: title, subtitle: subtitle, kind: kind,
+            icon: .glyph(glyph), score: 900, titleMatch: [], action: .run {},
+            shortcut: prefix.map { ShortcutPresentation(prefix: $0, name: "GOOGLE", tint: NSColor.systemBlue) })
+    }
+
+    private func launcher(_ query: String, name: String, rows: [SearchResult]) throws {
+        let controller = SearchViewController()
+        let window = NSWindow(contentRect: CGRect(x: -10000, y: -10000, width: 764, height: 390),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        defer { controller.stopGlow(); window.orderOut(nil) }
+        controller.setSearchText(query)
+        controller.stopGlow()
+        controller.focus()
+        controller.apply(results: rows, isSearching: false)
+        let height = controller.preferredContentHeight + 2 * CSL.Theme.panelInset
+        window.setContentSize(NSSize(width: 764, height: height))
+        controller.view.frame = CGRect(x: 0, y: 0, width: 764, height: height)
+        controller.view.layoutSubtreeIfNeeded()
+        try write(controller.view, name: name)
+    }
+
+    func testRenderReadmeMedia() throws {
+        _ = NSApplication.shared
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+        CSL.PixelFont.registerBundledFonts()
+        CEPKit.PixelFont.registerBundledFonts()
+        CSL.Theme.launcherScale = 1
+        SettingsStore.shared.setMotionPreference(.off)
+        output = URL(fileURLWithPath: try XCTUnwrap(ProcessInfo.processInfo.environment["CSL_README_MEDIA_DIR"]))
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+
+        try launcher("design", name: "launcher", rows: [
+            result("Design system", "~/Projects/Studio / Design system"),
+            result("Design review.pdf", "~/Documents / Design review.pdf", glyph: .search),
+            result("Design references", "~/Projects/Studio / References"),
+            result("Design notes.md", "~/Documents / Design notes.md", glyph: .search),
+            result("Design archive", "~/Projects/Archive / Design archive")
+        ])
+        try launcher("G native mac apps", name: "web-search", rows: [
+            result("native mac apps", "SEARCH WITH GOOGLE", kind: .website, glyph: .globe, prefix: "G"),
+            result("native mac apps for design", "RECENT SEARCH / GOOGLE", kind: .website, glyph: .globe, prefix: "G"),
+            result("native mac apps keyboard shortcuts", "RECENT SEARCH / GOOGLE", kind: .website, glyph: .globe, prefix: "G")
+        ])
+        try launcher("stop", name: "task-manager", rows: [
+            result("Safari", "RUNNING APP / REQUEST NORMAL QUIT", kind: .command, glyph: .gear),
+            result("Mail", "RUNNING APP / REQUEST NORMAL QUIT", kind: .command, glyph: .gear),
+            result("Visual Studio Code", "RUNNING APP / REQUEST NORMAL QUIT", kind: .command, glyph: .gear),
+            result("Music", "RUNNING APP / REQUEST NORMAL QUIT", kind: .command, glyph: .gear)
+        ])
+        try launcher("res", name: "suggestions", rows: SearchSuggestions.prefixes(for: "res", shortcuts: []))
+
+        let root = SettingsRootView(frame: CGRect(x: 0, y: 0, width: 844, height: 664))
+        root.sidebar.selectedIndex = 5
+        root.layoutSubtreeIfNeeded()
+        let section = AnimationSection(frame: root.contentContainer.bounds)
+        section.autoresizingMask = [.width, .height]
+        root.contentContainer.addSubview(section)
+        section.reload()
+        let settingsWindow = NSWindow(contentRect: root.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        settingsWindow.isReleasedWhenClosed = false
+        settingsWindow.contentView = root
+        defer { root.stopGlow(); settingsWindow.orderOut(nil) }
+        // Frame the production section without the sidebar's legacy version label.
+        let detail = NSView(frame: CGRect(x: 0, y: 0,
+            width: section.bounds.width + 64, height: section.bounds.height + 64))
+        detail.wantsLayer = true
+        detail.layer?.backgroundColor = CSL.Theme.bg.cgColor
+        detail.layer?.cornerRadius = 16
+        detail.layer?.borderWidth = 1
+        detail.layer?.borderColor = CSL.Theme.border.cgColor
+        section.removeFromSuperview()
+        section.frame.origin = CGPoint(x: 32, y: 32)
+        section.autoresizingMask = []
+        detail.addSubview(section)
+        let detailWindow = NSWindow(contentRect: detail.bounds, styleMask: .borderless,
+            backing: .buffered, defer: false)
+        detailWindow.isReleasedWhenClosed = false
+        detailWindow.contentView = detail
+        defer { detailWindow.orderOut(nil) }
+        try write(detail, name: "settings")
+
+        EmojiStore.shared.load()
+        XCTAssertNil(EmojiStore.shared.loadError)
+        let picker = PickerViewController()
+        picker.brand = "CSL"
+        let pickerWindow = NSWindow(contentRect: CGRect(x: -10000, y: -10000, width: 850, height: 600),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        pickerWindow.isReleasedWhenClosed = false
+        pickerWindow.contentViewController = picker
+        picker.view.frame = CGRect(x: 0, y: 0, width: 850, height: 600)
+        picker.setCategory(named: "smileys")
+        picker.setSearchText("")
+        defer { pickerWindow.orderOut(nil) }
+        try write(picker.view, name: "character-picker")
+    }
+}
