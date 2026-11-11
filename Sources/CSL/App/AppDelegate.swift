@@ -626,6 +626,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             NSWorkspace.shared.activateFileViewerSelecting([url])
             finish(true, record: true)
 
+        case .manage(let command, let program):
+            Task { @MainActor in
+                let success = await ProcessActionRunner.run(command, program: program)
+                finish(success, record: false)
+            }
+
         case .run(let action):
             action()
             finish(true, record: false)

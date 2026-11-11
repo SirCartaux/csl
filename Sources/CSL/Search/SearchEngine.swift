@@ -14,6 +14,7 @@ final class SearchEngine {
 
     private let appProvider = AppProvider()
     private let commandProvider = CommandProvider()
+    private let processProvider: RunningApplicationProvider
     private let fileProvider = FileProvider()
     private let websiteProvider = WebsiteProvider()
     private let fileIndex = FileIndex.shared
@@ -36,11 +37,16 @@ final class SearchEngine {
     private var aliasObserver: NSObjectProtocol?
     private var iconObserver: NSObjectProtocol?
     private var shortcutObserver: NSObjectProtocol?
-    private var shortcutActive = false
+    private var exclusiveActive = false
 
     var lastQuery: String { currentQuery }
 
-    init() {
+    init(processProvider: RunningApplicationProvider = RunningApplicationProvider()) {
+        self.processProvider = processProvider
+        processProvider.onChange = { [weak self] in
+            guard let self, self.searchActive else { return }
+            self.search(self.currentQuery)
+        }
         aliasObserver = NotificationCenter.default.addObserver(
             forName: .cslAliasesChanged,
             object: nil,
@@ -68,6 +74,7 @@ final class SearchEngine {
     }
 
     deinit {
+        processProvider.stop()
         if let aliasObserver {
             NotificationCenter.default.removeObserver(aliasObserver)
         }
@@ -109,7 +116,8 @@ final class SearchEngine {
         loggedFirstUpdate = false
 
         guard !trimmed.isEmpty else {
-            shortcutActive = false
+            processProvider.stop()
+            exclusiveActive = false
             instantResults = commandProvider.allResults()
             fileSearching = false
             indexSearching = false
@@ -117,17 +125,32 @@ final class SearchEngine {
             return
         }
 
-        if let shortcut = ShortcutStore.shared.result(for: trimmed) {
-            shortcutActive = true
-            instantResults = [shortcut]
+        if let inline = InlineCommand.parse(raw, shortcuts: ShortcutStore.shared.shortcuts) {
+            currentQuery = raw
+            exclusiveActive = true
+            switch inline.kind {
+            case .process(let command):
+                instantResults = processProvider.results(command: command, query: inline.query)
+            case .shortcut, .google:
+                processProvider.stop()
+                if inline.query.isEmpty {
+                    instantResults = []
+                } else if let shortcut = ShortcutStore.shared.result(for: raw) {
+                    instantResults = [shortcut]
+                } else {
+                    instantResults = WebSearchProvider.result(for: raw).map { [$0] } ?? []
+                }
+            }
             fileSearching = false
             indexSearching = false
             emit()
             return
         }
-        shortcutActive = false
+        processProvider.stop()
+        exclusiveActive = false
 
         if let google = WebSearchProvider.result(for: trimmed) {
+            exclusiveActive = true
             instantResults = [google]
             fileSearching = false
             indexSearching = false
@@ -159,9 +182,10 @@ final class SearchEngine {
         }
     }
 
-    func cancel() {
+    func cancel(keepingProcessSession: Bool = false) {
+        if !keepingProcessSession { processProvider.stop() }
         searchActive = false
-        shortcutActive = false
+        exclusiveActive = false
         streamUpdate?.cancel(); streamUpdate = nil
         fileIndex.cancelSearch()
         generation += 1
@@ -174,7 +198,7 @@ final class SearchEngine {
     }
 
     private func refreshInstantResults() {
-        if shortcutActive {
+        if exclusiveActive {
             emit()
             return
         }
@@ -267,7 +291,7 @@ final class SearchEngine {
 
     /// Only fold in new index entries; do not restart the Spotlight query.
     func refreshIndexResults() {
-        guard searchActive, !shortcutActive, !currentQuery.isEmpty,
+        guard searchActive, !exclusiveActive, !currentQuery.isEmpty,
               WebSearchProvider.query(from: currentQuery) == nil else { return }
         searchIndex(for: currentQuery, generation: generation)
     }
@@ -292,7 +316,7 @@ final class SearchEngine {
     private func emit() {
         var seen = Set<String>()
         var merged: [SearchResult]
-        if shortcutActive {
+        if exclusiveActive {
             merged = instantResults.filter { seen.insert($0.id).inserted }
         } else {
             merged = AliasStore.shared.results(for: currentQuery)
@@ -301,7 +325,9 @@ final class SearchEngine {
             merged.append(contentsOf: streamedFileResults.filter { seen.insert($0.id).inserted })
             merged.append(contentsOf: fileResults.filter { seen.insert($0.id).inserted })
         }
-        merged = ResultRanker.shared.ranked(merged, query: currentQuery)
+        if !exclusiveActive {
+            merged = ResultRanker.shared.ranked(merged, query: currentQuery)
+        }
 
         if !loggedFirstUpdate {
             loggedFirstUpdate = true

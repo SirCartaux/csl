@@ -101,6 +101,7 @@ enum Layout {
 final class RootView: NSView {
     var showsOnlyLaunchingResult = false { didSet { needsDisplay = true } }
     var query: String = ""
+    var inlineCommand: InlineCommand? { didSet { needsDisplay = true } }
     var resultCount: Int = 0
     var isSearching: Bool = false
     var graphActive = false { didSet { needsDisplay = true } }
@@ -262,6 +263,11 @@ final class RootView: NSView {
             return
         }
 
+        if let inlineCommand, inlineCommand.processCommand == nil, inlineCommand.query.isEmpty {
+            drawCentered("TYPE A SEARCH TERM", font: Theme.launcherDisplay(11), color: inlineCommand.tint, in: rect)
+            return
+        }
+
         if !query.isEmpty {
             drawCentered(
                 "NO RESULTS",
@@ -341,9 +347,14 @@ final class RootView: NSView {
             return
         }
         var cursor: CGFloat = rect.minX + Theme.ls(18)
-        cursor = drawHint(key: "UP/DOWN", label: "NAVIGATE", at: cursor, centerY: rect.midY)
-        cursor = drawHint(key: "ENTER", label: "OPEN", at: cursor, centerY: rect.midY)
-        cursor = drawHint(key: "CMD+ENTER", label: "REVEAL", at: cursor, centerY: rect.midY)
+        if let command = inlineCommand?.processCommand {
+            cursor = drawHint(key: "TAB", label: "NEXT APP", at: cursor, centerY: rect.midY)
+            cursor = drawHint(key: "ENTER", label: command.label, at: cursor, centerY: rect.midY)
+        } else {
+            cursor = drawHint(key: "UP/DOWN", label: "NAVIGATE", at: cursor, centerY: rect.midY)
+            cursor = drawHint(key: "ENTER", label: "OPEN", at: cursor, centerY: rect.midY)
+            cursor = drawHint(key: "CMD+ENTER", label: "REVEAL", at: cursor, centerY: rect.midY)
+        }
         _ = drawHint(key: "ESC", label: "CLOSE", at: cursor, centerY: rect.midY)
 
         let activity = Layout.footerActivityRect(in: bounds)

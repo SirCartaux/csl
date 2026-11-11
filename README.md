@@ -124,8 +124,8 @@ annotations; `Tools/generate_emoji.py` reproduces it.
 
 | | |
 |---|---|
-| **DMG** | `CSL-0.7.2.dmg` — open it and drag CSL into `/Applications` |
-| **ZIP** | `CSL-0.7.2.zip` — unzip and move `CSL.app` to `/Applications` |
+| **DMG** | `CSL-0.8.0.dmg` — open it and drag CSL into `/Applications` |
+| **ZIP** | `CSL-0.8.0.zip` — unzip and move `CSL.app` to `/Applications` |
 | **Requirements** | macOS 14 Sonoma or newer · Universal binary (Apple Silicon + Intel) |
 | **Price** | Free, Public Domain (Unlicense), no telemetry |
 
@@ -135,6 +135,35 @@ starts normally.
 
 > **Important:** `⌘Space` is still owned by Spotlight by default. Either disable
 > the Spotlight shortcut (see below), or open CSL through its menu bar item.
+
+---
+
+## Running apps and inline commands
+
+Type `stop` or `restart` (case-insensitive) to list running applications, including
+hidden and minimized apps. Add a name to filter with the same fuzzy matching as
+the launcher: `stop Safari` or `Restart Visual Studio Code`.
+
+- `Enter` acts on the first result, or the app you selected.
+- `Tab` / `Shift+Tab` cycle forward / backward and wrap around the list.
+- `Esc` closes the launcher and releases the running-app list.
+- `stop` requests a normal quit. Apps can still ask to save changes or refuse.
+- `restart` waits for the selected process to exit before reopening its original
+  app bundle. A refused or cancelled quit does not restart it; the operation
+  times out after 30 seconds without force-quitting.
+
+The task manager only queries running apps when these commands are used. It
+caches that list while typing, updates on app launch/exit, and removes its
+observers and snapshot when leaving the mode. There is no background polling,
+CPU sampling, or process scan during normal searches or while the launcher is hidden.
+
+Recognized prefixes are bold with a tinted background and underline **in the
+input itself**: red for `stop`, amber for `restart`, and the website's colour for
+custom search shortcuts such as `G query` or `KL query`. The rest of the query
+keeps the normal text style. All text remains editable, selectable and copyable.
+Website prefixes activate after a space; `G ` shows a prompt for a search term.
+`STOP` and `RESTART` are reserved command names and take precedence over older
+website shortcuts with those names. Existing custom prefixes and settings are preserved.
 
 ---
 

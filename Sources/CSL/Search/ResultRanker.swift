@@ -502,7 +502,7 @@ final class ResultRanker {
         switch result.action {
         case .open(let url), .reveal(let url):
             return url.isFileURL ? url : nil
-        case .run:
+        case .run, .manage:
             return nil
         }
     }

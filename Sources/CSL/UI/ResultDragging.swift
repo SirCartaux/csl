@@ -17,7 +17,7 @@ enum ResultDragging {
         switch result.action {
         case .open(let url), .reveal(let url):
             return url as NSURL
-        case .run:
+        case .run, .manage:
             let item = NSPasteboardItem()
             item.setString(result.title, forType: .string)
             return item

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0 — 2026-11-11
+
+### On-demand task manager
+- Type `stop` or `restart`, in any case, to list running user-facing apps; filter the list by typing an app name.
+- Enter executes the first or selected result. Tab / Shift+Tab cycle through apps, including wraparound.
+- Quit normally and wait for actual termination before restarting the captured app bundle. Refused/cancelled quits and a 30-second timeout report failure without force-quitting or starting a duplicate.
+- Validate process identity before acting so stale results cannot affect a reused PID.
+- Only enumerate apps on entering task mode and on workspace launch/exit events. Cache the list while typing; release it and its observers on exit. Normal search and hidden-launcher idle perform no task-manager polling or sampling.
+
+### Inline prefixes
+- Highlight command and website-search prefixes in the input with bold type, a tinted background and underline, while keeping the query in the normal text style.
+- Use red for STOP, amber for RESTART and each configured website's tint for custom shortcuts, including user-added prefixes.
+- Preserve native editing, text selection, undo and copy/paste. Prefix-only website queries show a search-term prompt.
+- Keep process and website command results exclusive from files, aliases and graph mode. Reserve STOP and RESTART against new conflicting website shortcuts.
+
 ## 0.7.2 — 2026-11-04
 
 ### Web search shortcuts

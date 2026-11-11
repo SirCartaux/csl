@@ -211,7 +211,13 @@ final class ResultRowView: NSView {
         if isLaunching, let launchLabelRect {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .right
-            ("LAUNCHING" as NSString).draw(
+            let actionLabel: String
+            if case .manage(let command, _) = result.action {
+                actionLabel = command == .stop ? "STOPPING" : "RESTARTING"
+            } else {
+                actionLabel = "LAUNCHING"
+            }
+            (actionLabel as NSString).draw(
                 in: launchLabelRect,
                 withAttributes: [
                     .font: Theme.launcherDisplay(7.5),

@@ -100,12 +100,14 @@ final class ShortcutStore {
 
     enum AddError: LocalizedError {
         case prefix
+        case reserved
         case name
         case url
         case duplicate(String)
 
         var errorDescription: String? {
             switch self {
+            case .reserved: return "STOP and RESTART are reserved for running applications."
             case .prefix: return "Please enter a prefix of 1–6 letters or digits."
             case .name: return "Please enter a name."
             case .url: return "The search URL must contain {query} and be a valid HTTP(S) URL."
@@ -127,6 +129,7 @@ final class ShortcutStore {
     func add(prefix rawPrefix: String, name rawName: String, template rawTemplate: String) -> Result<SearchShortcut, AddError> {
         let prefix = Self.normalizedPrefix(rawPrefix)
         guard !prefix.isEmpty else { return .failure(.prefix) }
+        guard ProcessCommand(rawValue: prefix.lowercased()) == nil else { return .failure(.reserved) }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return .failure(.name) }
 

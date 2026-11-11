@@ -17,6 +17,7 @@ enum ResultAction {
     case open(URL)
     case reveal(URL)
     case run(() -> Void)
+    case manage(ProcessCommand, RunningProgram)
 }
 
 struct ShortcutPresentation {

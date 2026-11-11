@@ -362,6 +362,8 @@ final class SearchViewController: NSViewController {
             closeQuickLook(restoreFocus: false)
         }
         searchField.stringValue = ""
+        searchField.inlineCommand = nil
+        rootView.inlineCommand = nil
         placeholderView.isHidden = false
         resetSelectionOnNextUpdate = true
         userNavigated = false
@@ -758,6 +760,17 @@ final class SearchViewController: NSViewController {
         updateInteractionSelection(animated: true)
     }
 
+    private func cycleProcessSelection(by delta: Int) {
+        pendingOpenAfterSearch = false
+        guard resultsAreCurrent, !results.isEmpty else { return }
+        userNavigated = true
+        isNavigatingResults = true
+        selectedIndex = (selectedIndex + delta + results.count) % results.count
+        tableView.reloadData()
+        tableView.scrollRowToVisible(selectedIndex)
+        updateInteractionSelection(animated: true)
+    }
+
     func cancelPendingOpen() {
         pendingOpenAfterSearch = false
     }
@@ -838,7 +851,7 @@ final class SearchViewController: NSViewController {
         switch result.action {
         case .open(let url), .reveal(let url):
             return url.isFileURL ? url : nil
-        case .run:
+        case .run, .manage:
             return nil
         }
     }
@@ -1043,7 +1056,7 @@ final class SearchViewController: NSViewController {
             menu.addItem(contextItem("Copy Path", #selector(contextCopyPath)))
             menu.addItem(.separator())
             menu.addItem(contextItem("Add Alias…", #selector(contextAddAlias)))
-        case .run:
+        case .run, .manage:
             menu.addItem(contextItem("Run", #selector(contextRun)))
         }
 
@@ -1065,7 +1078,7 @@ final class SearchViewController: NSViewController {
         switch result.action {
         case .open(let url), .reveal(let url):
             return url.isFileURL ? url : nil
-        case .run:
+        case .run, .manage:
             return nil
         }
     }
@@ -1146,6 +1159,8 @@ final class SearchViewController: NSViewController {
         reservedResultRows = 0
         selectedIndex = 0
         searchField.stringValue = ""
+        searchField.inlineCommand = nil
+        rootView.inlineCommand = nil
         searchField.isEditable = true
         placeholderView.text = "SEARCH CLIPBOARD…"
         placeholderView.isHidden = false
@@ -1179,6 +1194,8 @@ final class SearchViewController: NSViewController {
         clipboardView.isHidden = true
         placeholderView.text = "TYPE TO SEARCH"
         searchField.stringValue = ""
+        searchField.inlineCommand = nil
+        rootView.inlineCommand = nil
         placeholderView.isHidden = false
         scrollView.isHidden = false
         rootView.clipboardMode = false
@@ -1287,7 +1304,7 @@ final class SearchViewController: NSViewController {
         tableView.reloadData()
         if !success {
             startGlow()
-            flashStatus("COULD NOT OPEN")
+            flashStatus(rootView.inlineCommand?.processCommand != nil ? "APP DID NOT QUIT / RESTART" : "COULD NOT OPEN")
             focus()
         }
         Log.debug("launch finished: success=\(success)")
@@ -1409,6 +1426,9 @@ extension SearchViewController: NSTextFieldDelegate {
         guard obj.object as? NSTextField === searchField else { return }
         Log.debug("query: \"\(searchField.stringValue)\"")
         placeholderView.isHidden = !searchField.stringValue.isEmpty
+        let inline = clipboardMode ? nil : InlineCommand.parse(searchField.stringValue, shortcuts: ShortcutStore.shared.shortcuts)
+        searchField.inlineCommand = inline
+        rootView.inlineCommand = inline
         lastQueryEdit = CACurrentMediaTime()
         pendingOpenAfterSearch = false
         if clipboardMode {
@@ -1432,7 +1452,7 @@ extension SearchViewController: NSTextFieldDelegate {
         interactionEffects.setHover(nil)
         searchPrompt.pulse()
         rootView.query = searchField.stringValue
-        rootView.graphActive = WebSearchProvider.query(from: searchField.stringValue) == nil
+        rootView.graphActive = inline == nil && WebSearchProvider.query(from: searchField.stringValue) == nil
             && FunctionExpression.body(of: searchField.stringValue) != nil
         if !rootView.graphActive { functionGraph.stopInteraction() }
         functionGraph.isHidden = !rootView.graphActive
@@ -1451,10 +1471,10 @@ extension SearchViewController: NSTextFieldDelegate {
             // Coalesce rapid edits so the list is not rebuilt for every letter.
             // The current rows stay stable until the settled query has results
             // (or a definitive miss), and actions are blocked by resultsAreCurrent.
-            engine?.cancel()
+            engine?.cancel(keepingProcessSession: inline?.processCommand != nil)
             let query = searchField.stringValue
-            if query.isEmpty {
-                engine?.search("")
+            if query.isEmpty || inline != nil {
+                engine?.search(query)
             } else {
                 let work = DispatchWorkItem { [weak self] in
                     guard let self, self.searchField.stringValue == query else { return }
@@ -1494,14 +1514,18 @@ extension SearchViewController: NSTextFieldDelegate {
             textView.selectAll(nil)
             return true
         case #selector(NSResponder.insertTab(_:)):
-            if isNavigatingResults {
+            if rootView.inlineCommand?.processCommand != nil {
+                cycleProcessSelection(by: 1)
+            } else if isNavigatingResults {
                 moveSelection(by: 1)
             } else {
                 beginResultsNavigation()
             }
             return true
         case #selector(NSResponder.insertBacktab(_:)):
-            if isNavigatingResults {
+            if rootView.inlineCommand?.processCommand != nil {
+                cycleProcessSelection(by: -1)
+            } else if isNavigatingResults {
                 moveSelection(by: -1)
             } else {
                 beginResultsNavigation()
